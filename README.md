@@ -1,2 +1,2 @@
-# leoni-cutting-quality-cockpit
-LEONI Cutting - Quality Cockpit (suivi defauts &amp; PPM)
+# LEONI-Cutting-Suivi-d-fauts-PPM
+Cutting · Suivi défauts &amp; PPM

@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PARETO NOK — Contrôle Qualité Sertissage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Saira+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+/* Chargeur de librairies avec CDN de secours en cascade.
+   Si cdnjs est bloqué par le proxy de l'usine, on retente
+   automatiquement via jsDelivr puis unpkg. */
+function loadScriptCascade(urls, onDone){
+  let i = 0;
+  function tryNext(){
+    if(i >= urls.length){ onDone(false); return; }
+    const s = document.createElement('script');
+    s.src = urls[i];
+    s.onload = ()=> onDone(true);
+    s.onerror = ()=>{ i++; tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+}
+window.__chartReady = new Promise(resolve=>{
+  loadScriptCascade([
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
+    'https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js'
+  ], resolve);
+});
+window.__xlsxReady = new Promise(resolve=>{
+  loadScriptCascade([
+    'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+    'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+    'https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js'
+  ], resolve);
+});
+</script>
+
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="pareto-nok.css">
+</head>
+<body>
+
+<div id="netBanner" style="display:none;background:#5C1A22;color:#FFD7DB;font-family:'Rajdhani',sans-serif;
+  font-weight:600;font-size:13.5px;text-align:center;padding:9px 14px;border-bottom:1px solid #7A2530;">
+  ⚠ Le graphique Pareto (Chart.js) n'a pas pu être chargé — vérifiez la connexion internet de ce poste
+  ou l'accès aux domaines <b>cdnjs.cloudflare.com</b>, <b>cdn.jsdelivr.net</b>, <b>unpkg.com</b>.
+  Le tableau et les KPI restent disponibles ci-dessous.
+</div>
+
+<div class="cockpit">
+  <div class="cockpit-left">
+    <span class="led"></span>
+    <div class="brand-stack">
+      <span class="brand-sub">LEONI Wiring System · Berrchid</span>
+      <span class="brand">Pareto NOK <span>— Contrôle Qualité Sertissage</span></span>
+    </div>
+  </div>
+  <div class="cockpit-right">
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="dark" class="active" title="Mode sombre">🌙 Sombre</button>
+      <button data-theme="light" title="Mode clair">☀️ Clair</button>
+    </div>
+    <span id="entryCount" class="mono"></span>
+    <span id="clock" class="mono"></span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="kpis">
+    <div class="kpi"><div class="label">Quantité triée</div><div class="val mono" id="kpiTrie">0</div><div class="sub">unités contrôlées</div></div>
+    <div class="kpi"><div class="label">Quantité OK</div><div class="val green mono" id="kpiOk">0</div><div class="sub" id="kpiOkPct">—</div></div>
+    <div class="kpi"><div class="label">Quantité NOK</div><div class="val red mono" id="kpiNok">0</div><div class="sub" id="kpiNokPct">—</div></div>
+    <div class="kpi"><div class="label">Taux NOK</div><div class="val red mono" id="kpiRate">0%</div><div class="sub">sur la période affichée</div></div>
+    <div class="kpi"><div class="label">Défaut n°1</div><div class="val mono" id="kpiTop" style="font-size:15px;">—</div><div class="sub" id="kpiTopPct">—</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="periodSeg">
+      <button data-p="day" class="active">Jour</button>
+      <button data-p="week">Semaine</button>
+      <button data-p="month">Mois</button>
+    </div>
+    <input type="date" id="dateInput">
+    <input type="week" id="weekInput" style="display:none">
+    <input type="month" id="monthInput" style="display:none">
+    <select id="machineFilter"><option value="all">Toutes machines</option></select>
+    <select id="shiftFilter">
+      <option value="all">Tous shifts</option>
+      <option value="A">Shift A</option>
+      <option value="B">Shift B</option>
+      <option value="C">Shift C</option>
+    </select>
+    <div class="spacer"></div>
+    <button class="btn primary" id="btnAdd">＋ Nouvelle saisie</button>
+    <button class="btn" id="btnExportXlsx">⭳ Exporter (.xlsx)</button>
+    <label class="btn ghost" style="margin:0;cursor:pointer;">⭱ Importer (.xlsx)
+      <input type="file" id="importFile" accept=".xlsx" style="display:none">
+    </label>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Diagramme de Pareto — NOK par défaut</h2>
+        <span class="tag" id="periodLabel">—</span>
+      </div>
+      <div class="chart-box"><canvas id="paretoChart"></canvas></div>
+      <div class="chart-hint">Règle 80/20 : la ligne pointillée marque le seuil de 80% cumulé — les barres à gauche de ce seuil sont les défauts "vitaux" à traiter en priorité. <b>Double-cliquez</b> une barre pour voir le détail des enregistrements.</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2 id="detailTitle">Détail</h2>
+        <span class="tag" id="detailCount" style="display:none;">0</span>
+      </div>
+      <div class="detail-body" id="detailBody">
+        <div class="empty-state">Double-cliquez sur une barre du Pareto<br>pour afficher les enregistrements liés<br>(date, shift, machine, quantité, photo).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Journal des saisies</h2>
+      <span class="tag" id="tblCount">0</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Shift</th><th>Défaut</th><th>Machine</th>
+          <th>Trié</th><th>OK</th><th>NOK</th><th>Photo</th><th></th>
+        </tr></thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+    <div class="tbl-foot"><button class="btn ghost" id="btnMore" style="display:none;">Afficher plus</button></div>
+  </div>
+
+  <footer>
+    Stockage en mémoire pour cette démo (données réelles importées : 216 enregistrements, 18 mai → 30 juin 2026).<br>
+    Pour un usage permanent sur plusieurs postes, déployez ce fichier sur GitHub Pages et branchez <b>Firebase Realtime Database</b> à la place du tableau en mémoire — même architecture que votre <b>LEONI Crimping Lab</b>. Utilisez <b>⭳ Exporter (.xlsx)</b> régulièrement en attendant.
+  </footer>
+</div>
+
+<!-- Modal saisie -->
+<div class="modal-bg" id="modalAdd">
+  <div class="modal">
+    <div class="modal-head"><h3>Nouvelle saisie qualité</h3><button class="modal-close" data-close="modalAdd">✕</button></div>
+    <div class="modal-body">
+      <div class="warn-box" id="warnBox">⚠ La somme OK + NOK ne correspond pas à la quantité triée.</div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="fDate"></div>
+        <div class="field"><label>Shift</label>
+          <select id="fShift"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Défaut</label>
+        <input list="defautList" id="fDefaut" placeholder="Ex : Sertissage sur isolant">
+        <datalist id="defautList"></datalist>
+      </div>
+      <div class="field">
+        <label>Machine</label>
+        <input list="machineList" id="fMachine" placeholder="Ex : BT 06">
+        <datalist id="machineList"></datalist>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantité triée</label><input type="number" min="0" id="fTrie" value="0"></div>
+        <div class="field"><label>Quantité OK</label><input type="number" min="0" id="fOk" value="0"></div>
+      </div>
+      <div class="field"><label>Quantité NOK</label><input type="number" min="0" id="fNok" value="0"></div>
+      <div class="field">
+        <label>Photos (pièce défectueuse) — max 6</label>
+        <div class="photo-actions">
+          <button type="button" class="btn ghost" id="btnPhotoFile">📁 Importer</button>
+          <button type="button" class="btn ghost" id="btnPhotoCam">📷 Caméra live</button>
+        </div>
+        <input type="file" id="fPhoto" accept="image/*" multiple style="display:none">
+        <div class="photo-count" id="photoCount">0 / 6 photo(s)</div>
+        <div class="photo-grid" id="photoGrid"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="modalAdd">Annuler</button>
+        <button class="btn primary" id="btnSave">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal caméra live (capture via webcam USB) -->
+<div class="modal-bg" id="modalCamera">
+  <div class="modal">
+    <div class="modal-head"><h3>📷 Caméra live</h3><button class="modal-close" data-close="modalCamera">✕</button></div>
+    <div class="modal-body">
+      <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+      <div class="camera-error" id="cameraError">Impossible d'accéder à la caméra. Vérifiez qu'une webcam USB est branchée et que l'accès a été autorisé dans le navigateur.</div>
+      <div class="camera-hint" id="cameraHint">La photo sera ajoutée à la saisie en cours (max 6).</div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="modalCamera">Fermer</button>
+        <button class="btn primary" id="btnCameraCapture">📸 Capturer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal détail de ligne (double-clic dans le Journal) -->
+<div class="modal-bg" id="modalRowDetail">
+  <div class="modal">
+    <div class="modal-head"><h3>Détail de la saisie</h3><button class="modal-close" data-close="modalRowDetail">✕</button></div>
+    <div class="modal-body">
+      <div class="warn-box" id="rowAnomalyWarn">⚠ La somme OK + NOK ne correspond pas à la quantité triée — saisie à vérifier.</div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><div class="mono" id="rdDate" style="font-size:15px;font-weight:700;"></div></div>
+        <div class="field"><label>Shift</label><div class="mono" id="rdShift" style="font-size:15px;font-weight:700;"></div></div>
+      </div>
+      <div class="field"><label>Défaut</label><div id="rdDefaut" style="font-size:15px;font-weight:700;"></div></div>
+      <div class="field"><label>Machine</label><div class="mono" id="rdMachine" style="font-size:15px;font-weight:700;"></div></div>
+      <div class="field-row">
+        <div class="field"><label>Quantité triée</label><div class="mono" id="rdTrie" style="font-size:20px;font-weight:700;"></div></div>
+        <div class="field"><label>Taux NOK (cette saisie)</label><div class="mono" id="rdRate" style="font-size:20px;font-weight:700;"></div></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantité OK</label><div class="mono qty-ok" id="rdOk" style="font-size:24px;"></div></div>
+        <div class="field"><label>Quantité NOK</label><div class="mono qty-nok" id="rdNok" style="font-size:24px;"></div></div>
+      </div>
+      <div class="field" id="rdPhotoWrap">
+        <label>Photos</label>
+        <div class="photo-grid" id="rdPhotoGrid"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="modalRowDetail">Fermer</button>
+        <button class="btn primary" id="rdDeleteBtn">🗑 Supprimer cette saisie</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal photo -->
+<div class="modal-bg" id="modalPhoto">
+  <div class="modal photo-modal">
+    <div class="modal-head"><h3>Photo</h3><button class="modal-close" data-close="modalPhoto">✕</button></div>
+    <div class="modal-body">
+      <img id="photoFull" class="viewer-main" src="">
+      <div class="viewer-thumbs" id="viewerThumbs"></div>
+    </div>
+  </div>
+</div>
+
+<script id="seed-data" type="application/json">[{"date": "2026-05-18", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 52, "ok": 52, "nok": 0}, {"date": "2026-05-18", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 31, "ok": 31, "nok": 2}, {"date": "2026-05-18", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 37, "ok": 37, "nok": 0}, {"date": "2026-05-19", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 38, "ok": 38, "nok": 0}, {"date": "2026-05-19", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 24, "ok": 24, "nok": 0}, {"date": "2026-05-19", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 51, "ok": 51, "nok": 0}, {"date": "2026-05-20", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 37, "ok": 37, "nok": 0}, {"date": "2026-05-20", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 43, "ok": 43, "nok": 0}, {"date": "2026-05-20", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-05-21", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 38, "ok": 38, "nok": 0}, {"date": "2026-05-21", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 30, "ok": 30, "nok": 0}, {"date": "2026-05-21", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 51, "ok": 51, "nok": 0}, {"date": "2026-05-22", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-05-22", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 32, "ok": 32, "nok": 0}, {"date": "2026-05-22", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 44, "ok": 44, "nok": 0}, {"date": "2026-05-23", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 35, "ok": 35, "nok": 0}, {"date": "2026-05-23", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 64, "ok": 64, "nok": 0}, {"date": "2026-05-23", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 20, "ok": 20, "nok": 0}, {"date": "2026-06-01", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 24, "ok": 24, "nok": 0}, {"date": "2026-06-01", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 60, "ok": 60, "nok": 0}, {"date": "2026-06-01", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-06-02", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 100, "ok": 100, "nok": 0}, {"date": "2026-06-02", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 70, "ok": 70, "nok": 0}, {"date": "2026-06-02", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 86, "ok": 86, "nok": 0}, {"date": "2026-06-03", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 63, "ok": 63, "nok": 0}, {"date": "2026-06-03", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 177, "ok": 177, "nok": 0}, {"date": "2026-06-03", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 92, "ok": 92, "nok": 0}, {"date": "2026-06-04", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 2, "ok": 2, "nok": 0}, {"date": "2026-06-04", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 34, "ok": 34, "nok": 0}, {"date": "2026-06-04", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 19, "ok": 19, "nok": 0}, {"date": "2026-06-05", "shift": "B", "defaut": "Connexion vide", "machine": "BT 06", "trie": 16, "ok": 15, "nok": 1}, {"date": "2026-06-05", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 5, "ok": 5, "nok": 0}, {"date": "2026-06-05", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 10, "ok": 10, "nok": 0}, {"date": "2026-06-06", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 5, "ok": 5, "nok": 0}, {"date": "2026-06-06", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 4, "ok": 4, "nok": 0}, {"date": "2026-06-08", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 17, "ok": 17, "nok": 0}, {"date": "2026-06-08", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-06-08", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 32, "ok": 32, "nok": 0}, {"date": "2026-06-09", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 32, "ok": 32, "nok": 0}, {"date": "2026-06-09", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 60, "ok": 60, "nok": 0}, {"date": "2026-06-09", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 17, "ok": 17, "nok": 0}, {"date": "2026-06-10", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 26, "ok": 26, "nok": 0}, {"date": "2026-06-10", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 50, "ok": 50, "nok": 0}, {"date": "2026-06-10", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 19, "ok": 19, "nok": 0}, {"date": "2026-06-11", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 11, "ok": 11, "nok": 0}, {"date": "2026-06-11", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 47, "ok": 47, "nok": 0}, {"date": "2026-06-11", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 48, "ok": 48, "nok": 0}, {"date": "2026-06-12", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 16, "ok": 16, "nok": 0}, {"date": "2026-06-12", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 20, "ok": 20, "nok": 0}, {"date": "2026-06-12", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 32, "ok": 32, "nok": 0}, {"date": "2026-06-13", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 126, "ok": 126, "nok": 0}, {"date": "2026-06-13", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 51, "ok": 51, "nok": 0}, {"date": "2026-06-15", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 14, "ok": 14, "nok": 0}, {"date": "2026-06-15", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 9, "ok": 9, "nok": 0}, {"date": "2026-06-15", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-16", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 12, "ok": 12, "nok": 0}, {"date": "2026-06-16", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 17, "ok": 17, "nok": 0}, {"date": "2026-06-16", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 38, "ok": 38, "nok": 0}, {"date": "2026-06-17", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 20, "ok": 20, "nok": 0}, {"date": "2026-06-17", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-17", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 38, "ok": 38, "nok": 0}, {"date": "2026-06-18", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 150, "ok": 150, "nok": 0}, {"date": "2026-06-18", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 30, "ok": 30, "nok": 0}, {"date": "2026-06-18", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 25, "ok": 25, "nok": 0}, {"date": "2026-06-19", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 83, "ok": 83, "nok": 0}, {"date": "2026-06-19", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 50, "ok": 50, "nok": 0}, {"date": "2026-06-19", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 29, "ok": 29, "nok": 0}, {"date": "2026-06-20", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 42, "ok": 42, "nok": 0}, {"date": "2026-06-20", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 4, "ok": 4, "nok": 0}, {"date": "2026-06-22", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 12, "ok": 12, "nok": 0}, {"date": "2026-06-22", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 43, "ok": 43, "nok": 0}, {"date": "2026-06-22", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 33, "ok": 33, "nok": 0}, {"date": "2026-06-22", "shift": "A", "defaut": "Brin échappe", "machine": "BT 08", "trie": 30, "ok": 30, "nok": 0}, {"date": "2026-06-22", "shift": "B", "defaut": "Brin échappe", "machine": "BT 08", "trie": 10, "ok": 10, "nok": 0}, {"date": "2026-06-22", "shift": "C", "defaut": "Brin échappe", "machine": "BT 08", "trie": 21, "ok": 21, "nok": 0}, {"date": "2026-06-22", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 50, "ok": 50, "nok": 0}, {"date": "2026-06-22", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 35, "ok": 35, "nok": 0}, {"date": "2026-06-22", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 9, "ok": 9, "nok": 0}, {"date": "2026-06-22", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "SCHAFER", "trie": 6, "ok": 6, "nok": 0}, {"date": "2026-06-23", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 37, "ok": 37, "nok": 0}, {"date": "2026-06-23", "shift": "A", "defaut": "Brin échappe", "machine": "BT 08", "trie": 16, "ok": 16, "nok": 0}, {"date": "2026-06-23", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 1, "ok": 1, "nok": 0}, {"date": "2026-06-23", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 05", "trie": 6, "ok": 6, "nok": 0}, {"date": "2026-06-23", "shift": "B", "defaut": "Brin échappe", "machine": "BT06", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-06-23", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 12, "ok": 12, "nok": 0}, {"date": "2026-06-23", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 8, "ok": 0, "nok": 0}, {"date": "2026-06-23", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 1, "ok": 1, "nok": 0}, {"date": "2026-06-23", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "SCHAFER", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-23", "shift": "C", "defaut": "Brin échappe", "machine": "BT 08", "trie": 31, "ok": 31, "nok": 0}, {"date": "2026-06-23", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 10, "ok": 10, "nok": 0}, {"date": "2026-06-23", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 17, "ok": 17, "nok": 0}, {"date": "2026-06-23", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-23", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 8, "ok": 8, "nok": 0}, {"date": "2026-06-24", "shift": "A", "defaut": "Brin échappe", "machine": "BT 08", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-24", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 25, "ok": 25, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT03", "trie": 9, "ok": 9, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 2, "ok": 2, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Brin échappe", "machine": "BT 08", "trie": 31, "ok": 31, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 1, "ok": 1, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 68, "ok": 68, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 11, "ok": 11, "nok": 0}, {"date": "2026-06-24", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "SCHAFER", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-24", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 33, "ok": 33, "nok": 0}, {"date": "2026-06-24", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 11, "ok": 11, "nok": 0}, {"date": "2026-06-24", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 10, "ok": 10, "nok": 0}, {"date": "2026-06-24", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 2, "ok": 2, "nok": 0}, {"date": "2026-06-24", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 08", "trie": 21, "ok": 21, "nok": 0}, {"date": "2026-06-25", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 20, "ok": 20, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 7, "ok": 7, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "SCHAFER", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 132, "ok": 132, "nok": 0}, {"date": "2026-06-25", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 08", "trie": 19, "ok": 19, "nok": 0}, {"date": "2026-06-25", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 13, "ok": 13, "nok": 0}, {"date": "2026-06-25", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 14, "ok": 14, "nok": 0}, {"date": "2026-06-25", "shift": "C", "defaut": "Brin échappe", "machine": "BT 08", "trie": 12, "ok": 12, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Brin échappe", "machine": "BT 08", "trie": 26, "ok": 26, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 2, "ok": 2, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 38, "ok": 38, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 6, "ok": 6, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 16, "ok": 16, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-26", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "SCHAFER", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-26", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT04/07", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-26", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT06", "trie": 9, "ok": 9, "nok": 0}, {"date": "2026-06-26", "shift": "A", "defaut": "Brin échappe", "machine": "BT 08", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-26", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 40, "ok": 40, "nok": 0}, {"date": "2026-06-26", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 24, "ok": 24, "nok": 0}, {"date": "2026-06-26", "shift": "C", "defaut": "Brin échappe", "machine": "BT 08", "trie": 7, "ok": 7, "nok": 0}, {"date": "2026-06-27", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 04/07", "trie": 0, "ok": 0, "nok": 0}, {"date": "2026-06-27", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 10, "ok": 10, "nok": 0}, {"date": "2026-06-27", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 08", "trie": 11, "ok": 11, "nok": 0}, {"date": "2026-06-27", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 4, "ok": 4, "nok": 0}, {"date": "2026-06-27", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 69, "ok": 69, "nok": 0}, {"date": "2026-06-27", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-28", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 22, "ok": 22, "nok": 0}, {"date": "2026-06-29", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 1, "ok": 1, "nok": 0}, {"date": "2026-06-29", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 46, "ok": 46, "nok": 0}, {"date": "2026-06-29", "shift": "C", "defaut": "Brin échappe", "machine": "BT 08", "trie": 8, "ok": 8, "nok": 0}, {"date": "2026-06-29", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 29, "ok": 29, "nok": 0}, {"date": "2026-06-29", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 04", "trie": 3, "ok": 3, "nok": 0}, {"date": "2026-06-29", "shift": "B", "defaut": "Brin échappe", "machine": "BT 08", "trie": 8, "ok": 8, "nok": 0}, {"date": "2026-06-29", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 07", "trie": 2, "ok": 2, "nok": 0}, {"date": "2026-06-29", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 92, "ok": 92, "nok": 0}, {"date": "2026-06-29", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT02", "trie": 17, "ok": 17, "nok": 0}, {"date": "2026-06-30", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 32, "ok": 32, "nok": 0}, {"date": "2026-06-30", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 05", "trie": 1, "ok": 1, "nok": 0}, {"date": "2026-06-30", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 08", "trie": 30, "ok": 30, "nok": 0}, {"date": "2026-06-30", "shift": "C", "defaut": "Sertissage sur isolant", "machine": "BT 06", "trie": 26, "ok": 26, "nok": 0}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT38", "trie": 42, "ok": 10, "nok": 10}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT39", "trie": 43, "ok": 11, "nok": 11}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT40", "trie": 44, "ok": 12, "nok": 12}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT41", "trie": 45, "ok": 13, "nok": 13}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT42", "trie": 46, "ok": 14, "nok": 14}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT43", "trie": 47, "ok": 15, "nok": 15}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT44", "trie": 48, "ok": 16, "nok": 16}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT45", "trie": 49, "ok": 17, "nok": 17}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT46", "trie": 50, "ok": 18, "nok": 18}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT47", "trie": 51, "ok": 19, "nok": 19}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT48", "trie": 52, "ok": 20, "nok": 20}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT49", "trie": 53, "ok": 21, "nok": 21}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT50", "trie": 54, "ok": 22, "nok": 22}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT51", "trie": 55, "ok": 23, "nok": 23}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT52", "trie": 56, "ok": 24, "nok": 24}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT53", "trie": 57, "ok": 25, "nok": 25}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT54", "trie": 58, "ok": 26, "nok": 26}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT55", "trie": 59, "ok": 27, "nok": 27}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT56", "trie": 60, "ok": 28, "nok": 28}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT57", "trie": 61, "ok": 29, "nok": 29}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT58", "trie": 62, "ok": 30, "nok": 30}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT59", "trie": 63, "ok": 31, "nok": 31}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT60", "trie": 64, "ok": 32, "nok": 32}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT61", "trie": 65, "ok": 33, "nok": 33}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT62", "trie": 66, "ok": 34, "nok": 34}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT63", "trie": 67, "ok": 35, "nok": 35}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT64", "trie": 68, "ok": 36, "nok": 36}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT65", "trie": 69, "ok": 37, "nok": 37}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT66", "trie": 70, "ok": 38, "nok": 38}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT67", "trie": 71, "ok": 39, "nok": 39}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT68", "trie": 72, "ok": 40, "nok": 40}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT69", "trie": 73, "ok": 41, "nok": 41}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT70", "trie": 74, "ok": 42, "nok": 42}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT71", "trie": 75, "ok": 43, "nok": 43}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT72", "trie": 76, "ok": 44, "nok": 44}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT73", "trie": 77, "ok": 45, "nok": 45}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT74", "trie": 78, "ok": 46, "nok": 46}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT75", "trie": 79, "ok": 47, "nok": 47}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT76", "trie": 80, "ok": 48, "nok": 48}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT77", "trie": 81, "ok": 49, "nok": 49}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT78", "trie": 82, "ok": 50, "nok": 50}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT79", "trie": 83, "ok": 51, "nok": 51}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT80", "trie": 84, "ok": 52, "nok": 52}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT81", "trie": 85, "ok": 53, "nok": 53}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT82", "trie": 86, "ok": 54, "nok": 54}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT83", "trie": 87, "ok": 55, "nok": 55}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT84", "trie": 88, "ok": 56, "nok": 56}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT85", "trie": 89, "ok": 57, "nok": 57}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT86", "trie": 90, "ok": 58, "nok": 58}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT87", "trie": 91, "ok": 59, "nok": 59}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT88", "trie": 92, "ok": 60, "nok": 60}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT89", "trie": 93, "ok": 61, "nok": 61}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT90", "trie": 94, "ok": 62, "nok": 62}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT91", "trie": 95, "ok": 63, "nok": 63}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT92", "trie": 96, "ok": 64, "nok": 64}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT93", "trie": 97, "ok": 65, "nok": 65}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT94", "trie": 98, "ok": 66, "nok": 66}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT95", "trie": 99, "ok": 67, "nok": 67}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT96", "trie": 100, "ok": 68, "nok": 68}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT97", "trie": 101, "ok": 69, "nok": 69}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT98", "trie": 102, "ok": 70, "nok": 70}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT99", "trie": 103, "ok": 71, "nok": 71}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT100", "trie": 104, "ok": 72, "nok": 72}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT101", "trie": 105, "ok": 73, "nok": 73}, {"date": "2026-06-30", "shift": "A", "defaut": "Sertissage sur isolant", "machine": "BT 03", "trie": 71, "ok": 71, "nok": 0}, {"date": "2026-06-30", "shift": "B", "defaut": "Sertissage sur isolant", "machine": "BT 02", "trie": 19, "ok": 19, "nok": 0}]</script>
+
+<script>
+/* ================= STATE ================= */
+let records = [];
+(function initSeed(){
+  const raw = JSON.parse(document.getElementById('seed-data').textContent);
+  records = raw.map((r,i)=>({
+    id: 'seed_'+i,
+    date: r.date, shift: r.shift, defaut: r.defaut, machine: r.machine,
+    trie: r.trie, ok: r.ok, nok: r.nok,
+    photos: r.photos ? r.photos : (r.photo ? [r.photo] : [])
+  }));
+})();
+
+let state = { period:'month', refDate:'2026-06-01', machine:'all', shift:'all', tblLimit:50 };
+let paretoChart = null;
+const MAX_PHOTOS = 6;
+let currentPhotos = [];       // photos de la saisie en cours (max 6)
+let cameraStream = null;      // flux vidéo webcam actif
+
+/* ================= HELPERS ================= */
+function pad(n){return String(n).padStart(2,'0');}
+function isoWeek(d){
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (dt.getUTCDay()+6)%7;
+  dt.setUTCDate(dt.getUTCDate()-day+3);
+  const firstThurs = new Date(Date.UTC(dt.getUTCFullYear(),0,4));
+  const week = 1 + Math.round(((dt-firstThurs)/86400000 - 3 + ((firstThurs.getUTCDay()+6)%7))/7);
+  return {year:dt.getUTCFullYear(), week};
+}
+function weekInputValue(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const {year,week} = isoWeek(d);
+  return year+'-W'+pad(week);
+}
+function periodMatch(rec){
+  if(state.period==='day') return rec.date === state.refDate;
+  if(state.period==='month') return rec.date.slice(0,7) === state.refDate.slice(0,7);
+  if(state.period==='week'){
+    const rw = isoWeek(new Date(rec.date+'T00:00:00'));
+    const sw = isoWeek(new Date(state.refDate+'T00:00:00'));
+    return rw.year===sw.year && rw.week===sw.week;
+  }
+  return true;
+}
+function filtered(){
+  return records.filter(r=>{
+    if(state.machine!=='all' && r.machine!==state.machine) return false;
+    if(state.shift!=='all' && r.shift!==state.shift) return false;
+    return periodMatch(r);
+  });
+}
+function fmtDate(s){
+  const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y;
+}
+
+/* ================= FILTER DROPDOWNS ================= */
+function populateFilters(){
+  const machines = [...new Set(records.map(r=>r.machine))].sort();
+  const sel = document.getElementById('machineFilter');
+  sel.innerHTML = '<option value="all">Toutes machines</option>'+machines.map(m=>`<option value="${m}">${m}</option>`).join('');
+  document.getElementById('machineList').innerHTML = machines.map(m=>`<option value="${m}">`).join('');
+  const defauts = [...new Set(records.map(r=>r.defaut))].sort();
+  document.getElementById('defautList').innerHTML = defauts.map(d=>`<option value="${d}">`).join('');
+}
+
+/* ================= KPIs ================= */
+function renderKpis(list, pareto){
+  const trie = list.reduce((s,r)=>s+r.trie,0);
+  const ok = list.reduce((s,r)=>s+r.ok,0);
+  const nok = list.reduce((s,r)=>s+r.nok,0);
+  document.getElementById('kpiTrie').textContent = trie.toLocaleString('fr-FR');
+  document.getElementById('kpiOk').textContent = ok.toLocaleString('fr-FR');
+  document.getElementById('kpiOkPct').textContent = trie? (ok/trie*100).toFixed(1)+'% du trié':'—';
+  document.getElementById('kpiNok').textContent = nok.toLocaleString('fr-FR');
+  document.getElementById('kpiNokPct').textContent = trie? (nok/trie*100).toFixed(1)+'% du trié':'—';
+  document.getElementById('kpiRate').textContent = trie? (nok/trie*100).toFixed(2)+'%':'0%';
+  if(pareto.length){
+    document.getElementById('kpiTop').textContent = pareto[0].defaut;
+    document.getElementById('kpiTopPct').textContent = nok? (pareto[0].nok/nok*100).toFixed(1)+'% du NOK total':'—';
+  } else {
+    document.getElementById('kpiTop').textContent = '—';
+    document.getElementById('kpiTopPct').textContent = '—';
+  }
+  document.getElementById('entryCount').textContent = records.length+' saisies';
+}
+
+/* ================= PARETO ================= */
+function computePareto(list){
+  const map = {};
+  list.forEach(r=>{ map[r.defaut] = (map[r.defaut]||0) + r.nok; });
+  let arr = Object.entries(map).map(([defaut,nok])=>({defaut,nok})).filter(d=>d.nok>0);
+  arr.sort((a,b)=>b.nok-a.nok);
+  const total = arr.reduce((s,d)=>s+d.nok,0);
+  let cum=0;
+  arr.forEach(d=>{ cum+=d.nok; d.cumPct = total? cum/total*100 : 0; });
+  return arr;
+}
+
+function periodLabelText(){
+  if(state.period==='day') return fmtDate(state.refDate);
+  if(state.period==='month'){
+    const [y,m]=state.refDate.split('-');
+    const noms=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+    return noms[parseInt(m)-1]+' '+y;
+  }
+  if(state.period==='week'){
+    const {year,week}=isoWeek(new Date(state.refDate+'T00:00:00'));
+    return 'Semaine '+week+' · '+year;
+  }
+}
+
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function renderChart(pareto){
+  document.getElementById('periodLabel').textContent = periodLabelText();
+  const ctx = document.getElementById('paretoChart');
+  const labels = pareto.map(d=>d.defaut);
+  const noks = pareto.map(d=>d.nok);
+  const cum = pareto.map(d=>d.cumPct);
+  const vitalColor = cssVar('--red') || '#FF4B5C';
+  const restColor = cssVar('--text-faint') || '#3A4152';
+  const gridColor = cssVar('--border-soft') || '#1B2029';
+  const tickColor = cssVar('--text-dim') || '#8992A6';
+  const axisTitleColor = cssVar('--text-faint') || '#5A6272';
+  const amberColor = cssVar('--amber') || '#FFB020';
+  const panelColor = cssVar('--panel2') || '#161A23';
+  const textColor = cssVar('--text') || '#E7EAF1';
+  const borderColor = cssVar('--border') || '#232936';
+  const colors = pareto.map(d=> d.cumPct<=80 ? vitalColor : restColor);
+
+  if(paretoChart) paretoChart.destroy();
+  if(pareto.length===0){
+    ctx.getContext('2d').clearRect(0,0,ctx.width,ctx.height);
+    return;
+  }
+  paretoChart = new Chart(ctx, {
+    data:{
+      labels,
+      datasets:[
+        { type:'bar', label:'Quantité NOK', data:noks, backgroundColor:colors,
+          borderRadius:4, yAxisID:'y', order:2, maxBarThickness:46 },
+        { type:'line', label:'Cumulé %', data:cum, borderColor:amberColor,
+          backgroundColor:amberColor, pointRadius:3, pointBackgroundColor:amberColor,
+          borderWidth:2, tension:0.25, yAxisID:'y1', order:1 },
+        { type:'line', label:'Seuil 80%', data:pareto.map(_=>80), borderColor:axisTitleColor,
+          borderDash:[5,5], pointRadius:0, borderWidth:1.3, yAxisID:'y1', order:0 }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      // Un seul clic ne fait plus rien : il faut DOUBLE-CLIQUER une barre
+      // pour afficher son détail (voir listener 'dblclick' ajouté plus bas).
+      plugins:{
+        legend:{labels:{color:tickColor, font:{family:'Rajdhani',size:11,weight:'600'}, boxWidth:14}},
+        tooltip:{backgroundColor:panelColor, titleColor:textColor, bodyColor:tickColor, borderColor:borderColor, borderWidth:1}
+      },
+      scales:{
+        x:{ ticks:{color:tickColor, font:{family:'Rajdhani',size:11,weight:'600'}, maxRotation:35, minRotation:0},
+            grid:{color:gridColor} },
+        y:{ position:'left', beginAtZero:true, ticks:{color:tickColor, font:{family:'JetBrains Mono',size:10}},
+            grid:{color:gridColor}, title:{display:true,text:'Qté NOK',color:axisTitleColor,font:{size:11}} },
+        y1:{ position:'right', min:0, max:100, ticks:{color:axisTitleColor, font:{family:'JetBrains Mono',size:10}, callback:v=>v+'%'},
+            grid:{drawOnChartArea:false} }
+      }
+    }
+  });
+
+  // Double-clic sur une barre = ouvrir le détail des enregistrements liés.
+  ctx.ondblclick = (evt)=>{
+    const points = paretoChart.getElementsAtEventForMode(evt,'index',{intersect:false},false);
+    if(points.length){ showDetail(labels[points[0].index]); }
+  };
+}
+
+/* ================= DETAIL PANEL ================= */
+function showDetail(defaut){
+  const list = filtered().filter(r=>r.defaut===defaut && r.nok>0);
+  document.getElementById('detailTitle').textContent = defaut;
+  const cEl = document.getElementById('detailCount');
+  cEl.style.display='inline-block'; cEl.textContent = list.length+' saisie(s)';
+  const body = document.getElementById('detailBody');
+  if(!list.length){ body.innerHTML = '<div class="empty-state">Aucun enregistrement.</div>'; return; }
+  list.sort((a,b)=> a.date<b.date?1:-1);
+  body.innerHTML = list.map(r=>{
+    const n = (r.photos||[]).length;
+    return `
+    <div class="detail-item">
+      <div class="rowthumb-wrap">
+        <div class="thumb" ${n?`onclick="openPhoto('${r.id}')"`:''}>
+          ${n?`<img src="${r.photos[0]}">`:'—'}
+        </div>
+        ${n>1?`<span class="rowthumb-count">${n}</span>`:''}
+      </div>
+      <div class="info">
+        <b>${fmtDate(r.date)}</b> · Shift ${r.shift} · ${r.machine}<br>
+        Trié ${r.trie} · OK <span class="qty-ok">${r.ok}</span>
+      </div>
+      <div class="nokval">${r.nok}</div>
+    </div>
+  `;}).join('');
+}
+
+/* ================= TABLE ================= */
+function renderTable(){
+  const list = [...filtered()].sort((a,b)=> a.date<b.date?1:-1);
+  document.getElementById('tblCount').textContent = list.length+' lignes';
+  const slice = list.slice(0, state.tblLimit);
+  document.getElementById('tblBody').innerHTML = slice.map(r=>{
+    const n = (r.photos||[]).length;
+    const photoCell = n
+      ? `<span class="rowthumb-wrap"><img class="rowthumb" src="${r.photos[0]}" onclick="openPhoto('${r.id}')">${n>1?`<span class="rowthumb-count">${n}</span>`:''}</span>`
+      : '—';
+    // Contrôle qualité : la somme OK + NOK doit toujours égaler la quantité triée.
+    const anomaly = (r.ok + r.nok) !== r.trie;
+    return `
+    <tr class="tr-clickable${anomaly?' tr-anomaly':''}" data-id="${r.id}" title="Double-cliquez pour voir le détail complet${anomaly?' — ⚠ écart OK+NOK ≠ Trié':''}">
+      <td class="mono">${fmtDate(r.date)}</td>
+      <td>${r.shift}</td>
+      <td>${r.defaut}</td>
+      <td class="mono">${r.machine}</td>
+      <td class="mono">${r.trie}</td>
+      <td class="mono qty-ok">${r.ok}</td>
+      <td><span class="badge ${r.nok>0?'nok1':'nok0'} mono">${r.nok}</span></td>
+      <td>${photoCell}</td>
+      <td><button class="icon-btn" onclick="event.stopPropagation();deleteRecord('${r.id}')" title="Supprimer">🗑</button></td>
+    </tr>
+  `;}).join('');
+  document.getElementById('btnMore').style.display = list.length>state.tblLimit ? 'inline-flex':'none';
+}
+
+// Double-clic sur une ligne du journal = afficher le détail complet de la saisie.
+document.getElementById('tblBody').addEventListener('dblclick', e=>{
+  const tr = e.target.closest('tr[data-id]');
+  if(!tr) return;
+  if(e.target.closest('button, img')) return; // ne pas interférer avec suppression / zoom photo
+  showRowDetail(tr.dataset.id);
+});
+
+function deleteRecord(id){
+  if(!confirm('Supprimer cette saisie ?')) return;
+  records = records.filter(r=>r.id!==id);
+  refreshAll();
+}
+window.deleteRecord = deleteRecord;
+
+/* Visionneuse : affiche toutes les photos d'un enregistrement avec vignettes */
+let __viewerPhotos = [];
+function openPhoto(id, startIndex){
+  const r = records.find(x=>x.id===id);
+  __viewerPhotos = (r && r.photos) || [];
+  if(!__viewerPhotos.length) return;
+  renderViewer(startIndex||0);
+  document.getElementById('modalPhoto').classList.add('show');
+}
+function renderViewer(idx){
+  document.getElementById('photoFull').src = __viewerPhotos[idx];
+  const thumbsEl = document.getElementById('viewerThumbs');
+  thumbsEl.style.display = __viewerPhotos.length>1 ? 'flex':'none';
+  thumbsEl.innerHTML = __viewerPhotos.map((p,j)=>
+    `<img src="${p}" class="${j===idx?'active':''}" onclick="renderViewer(${j})">`
+  ).join('');
+}
+window.openPhoto = openPhoto;
+window.renderViewer = renderViewer;
+
+/* Détail complet d'une ligne du journal (double-clic) — vue "expert qualité" */
+function showRowDetail(id){
+  const r = records.find(x=>x.id===id);
+  if(!r) return;
+  document.getElementById('rdDate').textContent = fmtDate(r.date);
+  document.getElementById('rdShift').textContent = 'Shift ' + r.shift;
+  document.getElementById('rdDefaut').textContent = r.defaut;
+  document.getElementById('rdMachine').textContent = r.machine;
+  document.getElementById('rdTrie').textContent = r.trie.toLocaleString('fr-FR');
+  document.getElementById('rdOk').textContent = r.ok.toLocaleString('fr-FR');
+  document.getElementById('rdNok').textContent = r.nok.toLocaleString('fr-FR');
+  document.getElementById('rdRate').textContent = r.trie ? (r.nok/r.trie*100).toFixed(2)+'%' : '—';
+
+  const anomaly = (r.ok + r.nok) !== r.trie;
+  document.getElementById('rowAnomalyWarn').style.display = anomaly ? 'block' : 'none';
+
+  const photos = r.photos || [];
+  const photoWrap = document.getElementById('rdPhotoWrap');
+  const grid = document.getElementById('rdPhotoGrid');
+  if(photos.length){
+    photoWrap.style.display = 'block';
+    grid.innerHTML = photos.map((p,i)=>`<div class="photo-tile"><img src="${p}" style="cursor:pointer" onclick="openPhoto('${r.id}',${i})"></div>`).join('');
+  } else {
+    photoWrap.style.display = 'none';
+  }
+
+  document.getElementById('rdDeleteBtn').onclick = ()=>{
+    document.getElementById('modalRowDetail').classList.remove('show');
+    deleteRecord(id);
+  };
+  document.getElementById('modalRowDetail').classList.add('show');
+}
+window.showRowDetail = showRowDetail;
+
+/* ================= REFRESH ================= */
+function refreshAll(){
+  populateFilters();
+  const list = filtered();
+  const pareto = computePareto(list);
+  // Chaque étape est isolée : si l'une échoue (ex: Chart.js indisponible),
+  // les suivantes s'exécutent quand même — plus jamais un écran vide.
+  try{ renderKpis(list, pareto); }catch(e){ console.error('renderKpis', e); }
+  try{
+    if(typeof Chart !== 'undefined'){
+      renderChart(pareto);
+      document.getElementById('netBanner').style.display = 'none';
+    } else {
+      document.getElementById('netBanner').style.display = 'block';
+    }
+  }catch(e){ console.error('renderChart', e); document.getElementById('netBanner').style.display = 'block'; }
+  try{ renderTable(); }catch(e){ console.error('renderTable', e); }
+  document.getElementById('detailBody').innerHTML = '<div class="empty-state">Double-cliquez sur une barre du Pareto<br>pour afficher les enregistrements liés<br>(date, shift, machine, quantité, photo).</div>';
+  document.getElementById('detailTitle').textContent = 'Détail';
+  document.getElementById('detailCount').style.display='none';
+}
+
+/* ================= TOOLBAR EVENTS ================= */
+document.getElementById('periodSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  document.querySelectorAll('#periodSeg button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  state.period = btn.dataset.p;
+  document.getElementById('dateInput').style.display = state.period==='day' ? 'block':'none';
+  document.getElementById('weekInput').style.display = state.period==='week' ? 'block':'none';
+  document.getElementById('monthInput').style.display = state.period==='month' ? 'block':'none';
+  syncPickerValue();
+  refreshAll();
+});
+function syncPickerValue(){
+  if(state.period==='day') document.getElementById('dateInput').value = state.refDate;
+  if(state.period==='month') document.getElementById('monthInput').value = state.refDate.slice(0,7);
+  if(state.period==='week') document.getElementById('weekInput').value = weekInputValue(state.refDate);
+}
+document.getElementById('dateInput').addEventListener('change', e=>{ state.refDate = e.target.value; refreshAll(); });
+document.getElementById('monthInput').addEventListener('change', e=>{ state.refDate = e.target.value+'-01'; refreshAll(); });
+document.getElementById('weekInput').addEventListener('change', e=>{
+  const [y,w] = e.target.value.split('-W');
+  const simple = new Date(Date.UTC(y,0,1+(w-1)*7));
+  const dow = simple.getUTCDay();
+  const isoMon = new Date(simple);
+  if(dow<=4) isoMon.setUTCDate(simple.getUTCDate()-simple.getUTCDay()+1);
+  else isoMon.setUTCDate(simple.getUTCDate()+8-simple.getUTCDay());
+  state.refDate = isoMon.toISOString().slice(0,10);
+  refreshAll();
+});
+document.getElementById('machineFilter').addEventListener('change', e=>{ state.machine=e.target.value; refreshAll(); });
+document.getElementById('shiftFilter').addEventListener('change', e=>{ state.shift=e.target.value; refreshAll(); });
+document.getElementById('btnMore').addEventListener('click', ()=>{ state.tblLimit+=50; renderTable(); });
+
+/* ================= MODAL: ADD ================= */
+function openAddModal(){
+  document.getElementById('fDate').value = state.period==='day'? state.refDate : new Date().toISOString().slice(0,10);
+  document.getElementById('fShift').value='A';
+  document.getElementById('fDefaut').value='';
+  document.getElementById('fMachine').value='';
+  document.getElementById('fTrie').value=0;
+  document.getElementById('fOk').value=0;
+  document.getElementById('fNok').value=0;
+  document.getElementById('warnBox').style.display='none';
+  currentPhotos = [];
+  renderPhotoGrid();
+  document.getElementById('modalAdd').classList.add('show');
+}
+document.getElementById('btnAdd').addEventListener('click', openAddModal);
+
+document.querySelectorAll('[data-close]').forEach(el=>{
+  el.addEventListener('click', ()=>{
+    document.getElementById(el.dataset.close).classList.remove('show');
+    if(el.dataset.close==='modalCamera') stopCamera();
+  });
+});
+document.querySelectorAll('.modal-bg').forEach(bg=>{
+  bg.addEventListener('click', e=>{
+    if(e.target===bg){ bg.classList.remove('show'); if(bg.id==='modalCamera') stopCamera(); }
+  });
+});
+
+function autoNok(){
+  const trie = parseInt(document.getElementById('fTrie').value)||0;
+  const ok = parseInt(document.getElementById('fOk').value)||0;
+  document.getElementById('fNok').value = Math.max(trie-ok,0);
+  checkWarn();
+}
+document.getElementById('fTrie').addEventListener('input', autoNok);
+document.getElementById('fOk').addEventListener('input', autoNok);
+document.getElementById('fNok').addEventListener('input', checkWarn);
+function checkWarn(){
+  const trie = parseInt(document.getElementById('fTrie').value)||0;
+  const ok = parseInt(document.getElementById('fOk').value)||0;
+  const nok = parseInt(document.getElementById('fNok').value)||0;
+  document.getElementById('warnBox').style.display = (ok+nok!==trie) ? 'block':'none';
+}
+
+/* ---- Galerie de photos (import + caméra), max MAX_PHOTOS ---- */
+function renderPhotoGrid(){
+  document.getElementById('photoCount').textContent = currentPhotos.length+' / '+MAX_PHOTOS+' photo(s)';
+  const grid = document.getElementById('photoGrid');
+  grid.innerHTML = currentPhotos.map((p,i)=>`
+    <div class="photo-tile"><img src="${p}"><button type="button" class="rm" onclick="removeCurrentPhoto(${i})">✕</button></div>
+  `).join('');
+  const full = currentPhotos.length >= MAX_PHOTOS;
+  document.getElementById('btnPhotoFile').disabled = full;
+  document.getElementById('btnPhotoCam').disabled = full;
+  document.getElementById('btnPhotoFile').style.opacity = full ? .5 : 1;
+  document.getElementById('btnPhotoCam').style.opacity = full ? .5 : 1;
+}
+function removeCurrentPhoto(i){ currentPhotos.splice(i,1); renderPhotoGrid(); }
+window.removeCurrentPhoto = removeCurrentPhoto;
+
+function addPhotoData(dataUrl){
+  if(currentPhotos.length >= MAX_PHOTOS) return;
+  currentPhotos.push(dataUrl);
+  renderPhotoGrid();
+}
+
+document.getElementById('btnPhotoFile').addEventListener('click', ()=> document.getElementById('fPhoto').click());
+document.getElementById('fPhoto').addEventListener('change', e=>{
+  const files = Array.from(e.target.files||[]).slice(0, MAX_PHOTOS - currentPhotos.length);
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = ev=> addPhotoData(ev.target.result);
+    reader.readAsDataURL(file);
+  });
+  e.target.value = ''; // permet de resélectionner le même fichier plus tard
+});
+
+/* ---- Caméra live (webcam USB) ---- */
+document.getElementById('btnPhotoCam').addEventListener('click', openCameraModal);
+async function openCameraModal(){
+  if(currentPhotos.length >= MAX_PHOTOS) return;
+  document.getElementById('cameraError').style.display='none';
+  document.getElementById('cameraVideo').style.display='block';
+  document.getElementById('modalCamera').classList.add('show');
+  try{
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720} }, audio:false });
+    document.getElementById('cameraVideo').srcObject = cameraStream;
+  }catch(err){
+    console.error('getUserMedia', err);
+    document.getElementById('cameraVideo').style.display='none';
+    document.getElementById('cameraError').style.display='block';
+  }
+}
+function stopCamera(){
+  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
+  document.getElementById('cameraVideo').srcObject = null;
+}
+document.getElementById('btnCameraCapture').addEventListener('click', ()=>{
+  const video = document.getElementById('cameraVideo');
+  if(!cameraStream || !video.videoWidth){ return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  addPhotoData(canvas.toDataURL('image/jpeg', 0.85));
+  if(currentPhotos.length >= MAX_PHOTOS){
+    document.getElementById('modalCamera').classList.remove('show');
+    stopCamera();
+  }
+});
+
+document.getElementById('btnSave').addEventListener('click', ()=>{
+  const date = document.getElementById('fDate').value;
+  const defaut = document.getElementById('fDefaut').value.trim();
+  const machine = document.getElementById('fMachine').value.trim();
+  if(!date || !defaut || !machine){ alert('Date, défaut et machine sont obligatoires.'); return; }
+  const rec = {
+    id: 'r_'+Date.now(),
+    date, shift: document.getElementById('fShift').value,
+    defaut, machine,
+    trie: parseInt(document.getElementById('fTrie').value)||0,
+    ok: parseInt(document.getElementById('fOk').value)||0,
+    nok: parseInt(document.getElementById('fNok').value)||0,
+    photos: currentPhotos.slice()
+  };
+  records.push(rec);
+  document.getElementById('modalAdd').classList.remove('show');
+  // jump view to the entry's period so it's visible immediately
+  state.refDate = state.period==='month' ? rec.date.slice(0,7)+'-01' : rec.date;
+  syncPickerValue();
+  refreshAll();
+});
+
+/* ================= EXPORT / IMPORT (.xlsx avec photos intégrées) ================= */
+
+/* data:image/jpeg;base64,XXXX -> {extension:'jpeg', base64:'XXXX'} */
+function dataUrlToImageParts(dataUrl){
+  const m = /^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/i.exec(dataUrl||'');
+  if(!m) return null;
+  let ext = m[1].toLowerCase();
+  if(ext==='jpg') ext='jpeg';
+  if(ext!=='png' && ext!=='jpeg' && ext!=='gif') ext='png'; // extensions supportées par ExcelJS
+  return { extension: ext, base64: m[2] };
+}
+function bufferToBase64(buffer){
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for(let i=0; i<bytes.length; i+=chunk){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+  }
+  return btoa(binary);
+}
+
+async function exportXlsx(){
+  const btn = document.getElementById('btnExportXlsx');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Export en cours…';
+  try{
+    await window.__xlsxReady;
+    if(typeof ExcelJS === 'undefined'){
+      alert("Export impossible : la librairie ExcelJS n'a pas pu être chargée (pas de connexion internet).");
+      return;
+    }
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Pareto NOK — LEONI Wiring System Berrchid';
+    wb.created = new Date();
+
+    const wsData = wb.addWorksheet('Données');
+    wsData.columns = [
+      { header:'ID', key:'id', width:18 },
+      { header:'Date', key:'date', width:12 },
+      { header:'Shift', key:'shift', width:8 },
+      { header:'Défaut', key:'defaut', width:30 },
+      { header:'Machine', key:'machine', width:14 },
+      { header:'Quantité triée', key:'trie', width:14 },
+      { header:'Quantité OK', key:'ok', width:13 },
+      { header:'Quantité NOK', key:'nok', width:13 },
+      { header:'Nb photos', key:'nbphotos', width:10 }
+    ];
+    wsData.getRow(1).font = { bold:true };
+    wsData.getRow(1).eachCell(c=> c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF002857'} });
+    wsData.getRow(1).eachCell(c=> c.font = { bold:true, color:{argb:'FFFFFFFF'} });
+
+    records.forEach(r=>{
+      const row = wsData.addRow({
+        id:r.id, date:r.date, shift:r.shift, defaut:r.defaut, machine:r.machine,
+        trie:r.trie, ok:r.ok, nok:r.nok, nbphotos:(r.photos||[]).length
+      });
+      row.getCell('ok').font = { color:{argb:'FF178A47'}, bold:true };   // vert = OK
+      row.getCell('nok').font = { color:{argb:'FFD6303F'}, bold:true }; // rouge = NOK
+    });
+
+    const wsPhotos = wb.addWorksheet('Photos');
+    wsPhotos.columns = [
+      { header:'ID enregistrement', key:'id', width:18 },
+      { header:'Date', key:'date', width:12 },
+      { header:'Défaut', key:'defaut', width:30 },
+      { header:'Index', key:'idx', width:8 },
+      { header:'Photo', key:'photo', width:18 }
+    ];
+    wsPhotos.getRow(1).font = { bold:true };
+    wsPhotos.getRow(1).eachCell(c=> c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF002857'} });
+    wsPhotos.getRow(1).eachCell(c=> c.font = { bold:true, color:{argb:'FFFFFFFF'} });
+
+    let rowN = 2;
+    records.forEach(r=>{
+      (r.photos||[]).forEach((dataUrl, i)=>{
+        wsPhotos.getCell('A'+rowN).value = r.id;
+        wsPhotos.getCell('B'+rowN).value = r.date;
+        wsPhotos.getCell('C'+rowN).value = r.defaut;
+        wsPhotos.getCell('D'+rowN).value = i;
+        wsPhotos.getRow(rowN).height = 84;
+        const parts = dataUrlToImageParts(dataUrl);
+        if(parts){
+          const imgId = wb.addImage({ base64: parts.base64, extension: parts.extension });
+          wsPhotos.addImage(imgId, { tl:{ col:4, row:rowN-1 }, ext:{ width:104, height:104 } });
+        }
+        rowN++;
+      });
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pareto_nok_'+state.refDate+'.xlsx';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(err){
+    console.error('export xlsx', err);
+    alert("Erreur lors de l'export Excel : "+err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+document.getElementById('btnExportXlsx').addEventListener('click', exportXlsx);
+
+function normHeader(s){
+  return String(s??'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // enlève les accents
+    .replace(/[^a-z0-9]+/g,' ').trim();
+}
+function isMergeContinuation(cell){
+  // Vrai si cette cellule est la "suite" (2e ligne, 3e ligne…) d'une fusion verticale
+  // — cas très fréquent des fichiers Excel usine où une saisie occupe 2 lignes fusionnées.
+  try{ return !!cell.isMerged && cell.master && cell.master.address !== cell.address; }
+  catch(e){ return false; }
+}
+function excelCellDate(v){
+  if(v==null) return '';
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  if(typeof v === 'number'){ // date sérielle Excel
+    const d = new Date(Date.UTC(1899,11,30) + Math.round(v)*86400000);
+    return d.toISOString().slice(0,10);
+  }
+  const s = String(v.text ?? v).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
+  if(m){ let [,d,mo,y] = m; if(y.length===2) y = '20'+y; return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+  return s.slice(0,10);
+}
+function excelCellStr(cell){
+  const v = cell.value;
+  if(v==null) return '';
+  if(typeof v === 'object' && v.text!=null) return String(v.text).trim(); // texte enrichi / lien
+  if(typeof v === 'object' && v.result!=null) return String(v.result).trim(); // formule
+  return String(v).trim();
+}
+function excelCellInt(cell){
+  const v = cell.value;
+  const n = parseInt(typeof v==='object' ? (v.result ?? v.text) : v);
+  return isNaN(n) ? 0 : n;
+}
+
+/* Import strict : fichier déjà exporté par cette application (feuilles Données + Photos) */
+function importOwnExport(wb, wsData){
+  const photosById = {};
+  const wsPhotos = wb.getWorksheet('Photos');
+  if(wsPhotos){
+    const rowMeta = {};
+    wsPhotos.eachRow((row, rowNumber)=>{
+      if(rowNumber===1) return;
+      const id = row.getCell(1).value;
+      const idx = row.getCell(4).value;
+      if(id!=null) rowMeta[rowNumber] = { id:String(id), idx:parseInt(idx)||0 };
+    });
+    (wsPhotos.getImages()||[]).forEach(img=>{
+      const rowNumber = Math.round(img.range.tl.row) + 1;
+      const meta = rowMeta[rowNumber];
+      if(!meta) return;
+      const media = wb.model.media[img.imageId];
+      if(!media) return;
+      const ext = (media.extension || 'png').toLowerCase();
+      const b64 = media.base64 || (media.buffer ? bufferToBase64(media.buffer) : null);
+      if(!b64) return;
+      const dataUrl = `data:image/${ext==='jpg'?'jpeg':ext};base64,${b64}`;
+      if(!photosById[meta.id]) photosById[meta.id] = [];
+      photosById[meta.id][meta.idx] = dataUrl;
+    });
+  }
+  const stamp = Date.now();
+  const imported = [];
+  wsData.eachRow((row, rowNumber)=>{
+    if(rowNumber===1) return;
+    const rawId = row.getCell(1).value;
+    const date = String(row.getCell(2).value ?? '').slice(0,10);
+    const shift = String(row.getCell(3).value ?? '');
+    const defaut = String(row.getCell(4).value ?? '').trim();
+    const machine = String(row.getCell(5).value ?? '').trim();
+    const trie = parseInt(row.getCell(6).value)||0;
+    const ok = parseInt(row.getCell(7).value)||0;
+    const nok = parseInt(row.getCell(8).value)||0;
+    if(!date || !defaut || !machine) return;
+    const photos = (photosById[String(rawId)]||[]).filter(Boolean);
+    imported.push({ id:'imp_'+stamp+'_'+rowNumber, date, shift, defaut, machine, trie, ok, nok, photos });
+  });
+  return imported;
+}
+
+/* Import générique : n'importe quel fichier Excel usine (en-têtes auto-détectés,
+   colonnes dans n'importe quel ordre, cellules fusionnées, photos incorporées). */
+const HEADER_KEYWORDS = {
+  date:    ['date'],
+  shift:   ['shift','equipe','poste horaire'],
+  defaut:  ['defaut','type defaut','type de defaut','probleme','anomalie'],
+  machine: ['machine','poste','sertisseuse'],
+  trie:    ['quantite trie','qte trie','quantite triee','trie','sorted','quantite controlee'],
+  ok:      ['quantite ok','qte ok','ok'],
+  nok:     ['quantite nok','qte nok','nok','rebut','defectueux']
+};
+function detectHeaderRow(ws){
+  const maxScan = Math.min(ws.rowCount, 40);
+  for(let r=1; r<=maxScan; r++){
+    const row = ws.getRow(r);
+    const found = {};
+    row.eachCell({includeEmpty:false},(cell, colNumber)=>{
+      const n = normHeader(excelCellStr(cell));
+      if(!n) return;
+      for(const key in HEADER_KEYWORDS){
+        if(found[key]) continue;
+        if(HEADER_KEYWORDS[key].some(k=> n===k || n.startsWith(k))) found[key]=colNumber;
+      }
+    });
+    if(found.date && found.defaut && found.machine){ return { row:r, cols:found }; }
+  }
+  return null;
+}
+function importForeignWorkbook(wb){
+  for(const ws of wb.worksheets){
+    const detected = detectHeaderRow(ws);
+    if(!detected) continue;
+    const { row: headerRow, cols } = detected;
+
+    // Photos intégrées, associées à leur ligne d'ancrage.
+    const photosByRow = {};
+    (ws.getImages()||[]).forEach(img=>{
+      const rowNumber = Math.round(img.range.tl.row) + 1;
+      const media = wb.model.media[img.imageId];
+      if(!media) return;
+      const ext = (media.extension || 'png').toLowerCase();
+      const b64 = media.base64 || (media.buffer ? bufferToBase64(media.buffer) : null);
+      if(!b64) return;
+      const dataUrl = `data:image/${ext==='jpg'?'jpeg':ext};base64,${b64}`;
+      if(!photosByRow[rowNumber]) photosByRow[rowNumber]=[];
+      photosByRow[rowNumber].push(dataUrl);
+    });
+
+    const stamp = Date.now();
+    const imported = [];
+    let prevKey = null;
+    for(let r=headerRow+1; r<=ws.rowCount; r++){
+      const row = ws.getRow(r);
+      const dateCell = cols.date ? row.getCell(cols.date) : null;
+      if(dateCell && isMergeContinuation(dateCell)) continue; // 2e ligne d'une fusion : déjà comptée
+
+      const date = dateCell ? excelCellDate(dateCell.value) : '';
+      const defaut = cols.defaut ? excelCellStr(row.getCell(cols.defaut)) : '';
+      const machine = cols.machine ? excelCellStr(row.getCell(cols.machine)) : '';
+      if(!date || !defaut || !machine) continue;
+
+      const shift = cols.shift ? excelCellStr(row.getCell(cols.shift)) : '-';
+      const trie = cols.trie ? excelCellInt(row.getCell(cols.trie)) : 0;
+      const ok = cols.ok ? excelCellInt(row.getCell(cols.ok)) : 0;
+      const nok = cols.nok ? excelCellInt(row.getCell(cols.nok)) : Math.max(trie-ok,0);
+
+      // Filet de sécurité supplémentaire contre les doublons de fusion.
+      const key = [date,shift,defaut,machine,trie,ok,nok].join('|');
+      if(key===prevKey) continue;
+      prevKey = key;
+
+      imported.push({ id:'imp_'+stamp+'_'+r, date, shift, defaut, machine, trie, ok, nok, photos: photosByRow[r]||[] });
+    }
+    if(imported.length) return imported;
+  }
+  return null;
+}
+
+async function importXlsx(file){
+  await window.__xlsxReady;
+  if(typeof ExcelJS === 'undefined'){
+    alert("Import impossible : la librairie ExcelJS n'a pas pu être chargée (pas de connexion internet).");
+    return;
+  }
+  const buffer = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+
+  let imported;
+  let source;
+  const wsData = wb.getWorksheet('Données');
+  if(wsData){
+    imported = importOwnExport(wb, wsData);
+    source = 'export de cette application';
+  }
+  if(!imported || !imported.length){
+    imported = importForeignWorkbook(wb);
+    source = 'fichier Excel externe';
+  }
+
+  if(!imported || !imported.length){
+    alert('Aucun enregistrement reconnu dans ce fichier. Colonnes attendues (dans n\'importe quel ordre) : Date, Shift, Défaut, Machine, Quantité triée, Quantité OK, Quantité NOK.');
+    return;
+  }
+  records = records.concat(imported);
+  refreshAll();
+  alert(imported.length+' enregistrement(s) importé(s) depuis '+source+' ("'+file.name+'").');
+}
+document.getElementById('importFile').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  importXlsx(file).catch(err=>{
+    console.error('import xlsx', err);
+    alert("Erreur lors de la lecture du fichier Excel : "+err.message);
+  });
+  e.target.value = ''; // permet de réimporter le même fichier plus tard
+});
+
+/* ================= CLOCK ================= */
+function tickClock(){
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleDateString('fr-FR')+'  '+d.toLocaleTimeString('fr-FR');
+}
+setInterval(tickClock,1000); tickClock();
+
+/* ================= THEME (sombre / clair) ================= */
+document.getElementById('themeToggle').addEventListener('click', e=>{
+  const btn = e.target.closest('button'); if(!btn) return;
+  const mode = btn.dataset.theme;
+  document.documentElement.setAttribute('data-theme', mode);
+  document.querySelectorAll('#themeToggle button').forEach(b=> b.classList.toggle('active', b===btn));
+  // Le graphique utilise les couleurs CSS du thème courant : on le redessine.
+  refreshAll();
+});
+
+/* ================= INIT ================= */
+syncPickerValue();
+refreshAll();
+// Dès que Chart.js finit de charger (immédiatement, ou après repli sur un
+// CDN de secours), on redessine le graphique sans attendre un clic utilisateur.
+Promise.resolve(window.__chartReady).then(()=> refreshAll());
+// Après 6s, si toujours rien, on force l'affichage de la bannière d'alerte.
+setTimeout(()=>{ if(typeof Chart === 'undefined'){ document.getElementById('netBanner').style.display='block'; } }, 6000);
+</script>
+</body>
+</html>
