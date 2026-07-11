@@ -13,6 +13,30 @@ Chart.defaults.color = tc('--chart-tick');
 Chart.defaults.font.family = "'JetBrains Mono', monospace";
 Chart.defaults.font.size = 11;
 
+/* ---------------- XLSX À LA DEMANDE ----------------
+   La librairie xlsx (~700 Ko) ne sert qu'à l'import/export Excel :
+   on la charge au premier besoin plutôt qu'au démarrage de l'app. */
+let _xlsxPromise=null;
+function ensureXLSX(){
+  if(typeof XLSX!=='undefined') return Promise.resolve();
+  if(_xlsxPromise) return _xlsxPromise;
+  _xlsxPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>resolve();
+    s.onerror=()=>{ _xlsxPromise=null; reject(new Error('xlsx load failed')); };
+    document.head.appendChild(s);
+  });
+  return _xlsxPromise;
+}
+
+/* Anti-rebond : évite de relancer un recalcul/rendu coûteux à chaque frappe
+   (recherche tableau, recherche dans un filtre) — attend une pause de `wait` ms. */
+function debounce(fn,wait){
+  let t=null;
+  return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args),wait); };
+}
+
 /* ---------------- FILTER STATE ---------------- */
 const DIMS = [
   {key:'year',  field:'y',  label:'Année',  fmt:v=>v},
@@ -40,16 +64,45 @@ filters.year.add(2026);
    référentiels sont persistés dans localStorage et s'AJOUTENT
    en dessous. Dégradation propre si le stockage est bloqué
    (aperçu sandbox) -> tout fonctionne en mémoire.
+   TODO perf (à terme) : sortir ce bloc DATA (~160 Ko en dur en tête de
+   fichier) dans un data.json chargé via fetch(), pour ne plus bloquer le
+   parsing de app.js au démarrage. Non fait ici : gros effort, à traiter
+   comme un chantier à part (impacte tout ce qui lit DATA.rows au chargement).
    ============================================================ */
 const LS = {
   claims:'lwsq_claims_v1', sups:'lwsq_sups_v1', ops:'lwsq_ops_v1',
   nat:'lwsq_natures_v1', fam:'lwsq_families_v1', tools:'lwsq_tools_v1', theme:'lwsq_theme_v1',
   cat:'lwsq_natcat_v1', prod:'lwsq_prod_v1', ppmtgt:'lwsq_ppmtgt_v1', scraptgt:'lwsq_scraptgt_v1', prodm:'lwsq_prodm_v1', prodcao:'lwsq_prodcao_v1', machtype:'lwsq_machtype_v1', driftsig:'lwsq_driftsig_v1',
-  edits:'lwsq_rowedits_v1', roleperms:'lwsq_roleperms_v1'
+  edits:'lwsq_rowedits_v1', roleperms:'lwsq_roleperms_v1', tablet:'lwsq_tablet_v1', audit:'lwsq_audit_v1',
+  d8archive:'lwsq_d8archive_v1'
 };
+/* Journal d'audit : libellé humain par clé partagée — sert à savoir QUI a touché
+   QUELLE section QUAND (traçabilité), sans avoir à diffuser le détail de chaque champ. */
+const AUDIT_LABELS = {
+  [LS.claims]:'Réclamations', [LS.sups]:'Superviseurs', [LS.ops]:'Opérateurs',
+  [LS.nat]:'Référentiel · Natures', [LS.fam]:'Référentiel · Familles', [LS.tools]:'Référentiel · Fournisseurs',
+  [LS.cat]:'Classification (source défaut)', [LS.prod]:'Production (saisie)', [LS.ppmtgt]:'Cible PPM',
+  [LS.scraptgt]:'Cible scrap', [LS.prodm]:'Production mensuelle', [LS.prodcao]:'Production CAO',
+  [LS.machtype]:'Type de machine', [LS.driftsig]:'Seuil de dérive (SPC)', [LS.edits]:'Correction de ligne',
+  [LS.roleperms]:'Permissions par rôle', [LS.d8archive]:'Archive 8D'
+};
+function auditWho(){
+  try{
+    if(window._myAccount && (window._myAccount.name||window._myAccount.email)) return window._myAccount.name||window._myAccount.email;
+    if(window.firebase && firebase.auth().currentUser) return firebase.auth().currentUser.email||'—';
+  }catch(e){}
+  return 'Local';
+}
+function auditLog(label,extra){
+  if(!label) return;
+  const log=lsGet(LS.audit,[]);
+  log.push({ts:Date.now(),who:auditWho(),label,extra:extra||''});
+  if(log.length>500) log.splice(0,log.length-500);
+  lsSet(LS.audit,log);
+}
 let _lsOK = true;
 function lsGet(k,def){ try{ const v=localStorage.getItem(k); return v==null?def:JSON.parse(v); }catch(e){ _lsOK=false; return def; } }
-function lsSet(k,val){ try{ localStorage.setItem(k,JSON.stringify(val)); }catch(e){ _lsOK=false; return false; } if(window._fbReady && window._db && window._FB_SYNCKEYS && window._FB_SYNCKEYS.has(k)){ try{ window._db.ref('cockpit/'+k).set(val===undefined?null:val); }catch(e){} } return true; }
+function lsSet(k,val){ try{ localStorage.setItem(k,JSON.stringify(val)); }catch(e){ _lsOK=false; return false; } if(window._fbReady && window._db && window._FB_SYNCKEYS && window._FB_SYNCKEYS.has(k)){ try{ window._db.ref('cockpit/'+k).set(val===undefined?null:val); }catch(e){} } if(k!==LS.audit && AUDIT_LABELS[k]) auditLog(AUDIT_LABELS[k]); return true; }
 function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} if(window._fbReady && window._db && window._FB_SYNCKEYS && window._FB_SYNCKEYS.has(k)){ try{ window._db.ref('cockpit/'+k).remove(); }catch(e){} } }
 
 /* --- cibles éditables (persistées) : PPM (utilisée partout) + scrap mensuel --- */
@@ -102,8 +155,25 @@ function machineType(ma){
   const m=key.match(/^[A-Za-z]+/); return m?m[0].toUpperCase():'Autre';
 }
 
+/* --- normalisation du client/projet : fusionne les doublons de saisie
+   (espaces insecables colles depuis Excel, "RENAULT"/"renault"/"Renault"...) qui,
+   sinon, ressortent comme des secteurs distincts dans les graphiques/filtres.
+   Les sigles courts tout en majuscules (BMW, VW, PSA...) sont laisses tels quels ;
+   une casse deja mixte (ex. "McLaren") n'est pas touchee non plus. */
+function normProject(v){
+  let s=String(v==null?'':v).replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g,' ').trim().replace(/\s+/g,' ');
+  if(!s) return s;
+  if(s==='\u2014'||s==='-'||/^non[\s-]?renseign/i.test(s)) return 'Autre'; // "\u2014" (client non renseign\u00e9 \u00e0 la saisie) = m\u00eame cat\u00e9gorie que "Autre"
+  return s.split(' ').map(function(w){
+    if(!/[A-Za-z\u00c0-\u00ff]/.test(w)) return w;
+    var allCaps=(w===w.toUpperCase()), allLower=(w===w.toLowerCase());
+    if(allCaps && w.length<=3) return w;
+    if(allCaps || allLower) return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+    return w;
+  }).join(' ');
+}
 /* --- décoration : champs dérivés pc (source défaut) + mt (type machine) --- */
-function decorate(r){ r.pc=defectCat(r.na); r.mt=machineType(r.ma); return r; }
+function decorate(r){ r.pc=defectCat(r.na); r.mt=machineType(r.ma); r.pr=normProject(r.pr); return r; }
 DATA.rows.forEach(decorate);
 
 /* --- modifications de lignes du registre importé (clic droit → Modifier) ---
@@ -264,7 +334,7 @@ DIMS.forEach(d=>{
     document.querySelectorAll('.pop').forEach(p=>p.classList.remove('show'));
     if(!open){ buildOptions(d); pop.classList.add('show'); d._search.focus(); }
   });
-  d._search.addEventListener('input',()=>buildOptions(d));
+  d._search.addEventListener('input',debounce(()=>buildOptions(d),150));
   pop.querySelector('.clr').addEventListener('click',()=>{filters[d.key].clear();render();buildOptions(d);});
   pop.querySelector('.cls').addEventListener('click',()=>pop.classList.remove('show'));
 });
@@ -418,6 +488,54 @@ function legendInto(elId,labels){
     s.innerHTML=`<i style="background:${PALETTE[i%PALETTE.length]}"></i>${l}`;el.appendChild(s);});
 }
 
+/* ---------------- ALERTE PROACTIVE PPM ---------------- */
+/* Bannière visible en haut du tableau de bord dès que le PPM global dépasse la
+   cible (au lieu d'attendre que l'utilisateur remarque la pastille du KPI), avec
+   option de notification navigateur pour être alerté même onglet en arrière-plan. */
+let _ppmNotifyOn=false; try{ _ppmNotifyOn = localStorage.getItem('lwsq_ppmnotify_v1')==='1'; }catch(e){}
+let _ppmAlertDismissed=null;   // valeur (arrondie) de PPM pour laquelle la bannière a été masquée
+let _ppmWasOver=null;          // état précédent : ne notifier qu'au moment où on bascule en dépassement
+function updatePPMAlert(ppmG,tgt,over){
+  const banner=document.getElementById('ppmAlert'); if(!banner) return;
+  if(!over){ banner.style.display='none'; _ppmWasOver=false; return; }
+  const sig=Math.round(ppmG), gap=Math.round(ppmG-tgt), pct=tgt?Math.round(gap/tgt*100):0;
+  const t=document.getElementById('ppmAlertTitle'), s=document.getElementById('ppmAlertSub');
+  if(t) t.textContent='PPM global au-dessus de la cible';
+  if(s) s.textContent=`${fmt(sig)} PPM vs cible ${fmt(tgt)} · +${fmt(gap)} PPM (+${pct}%)`;
+  const bell=document.getElementById('ppmAlertBell'); if(bell) bell.classList.toggle('on',_ppmNotifyOn);
+  banner.style.display = (_ppmAlertDismissed===sig) ? 'none' : 'flex';
+  if(_ppmWasOver===false && _ppmNotifyOn && typeof Notification!=='undefined' && Notification.permission==='granted'){
+    try{ new Notification('Quality Cockpit — PPM au-dessus de la cible',{body:`${fmt(sig)} PPM (cible ${fmt(tgt)}) — dépassement de ${fmt(gap)} PPM (+${pct}%)`}); }catch(e){}
+  }
+  _ppmWasOver=true;
+}
+(function(){
+  const closeBtn=document.getElementById('ppmAlertClose'), bellBtn=document.getElementById('ppmAlertBell');
+  if(closeBtn) closeBtn.addEventListener('click',()=>{
+    _ppmAlertDismissed=Math.round(DATA.ppm.globalPPM);
+    document.getElementById('ppmAlert').style.display='none';
+  });
+  if(bellBtn) bellBtn.addEventListener('click',()=>{
+    if(_ppmNotifyOn){
+      _ppmNotifyOn=false; try{ localStorage.setItem('lwsq_ppmnotify_v1','0'); }catch(e){}
+      bellBtn.classList.remove('on'); toast('Alertes navigateur désactivées');
+      return;
+    }
+    if(typeof Notification==='undefined'){ toast('Notifications non supportées par ce navigateur',true); return; }
+    if(Notification.permission==='granted'){
+      _ppmNotifyOn=true; try{ localStorage.setItem('lwsq_ppmnotify_v1','1'); }catch(e){}
+      bellBtn.classList.add('on'); toast('Alertes navigateur activées 🔔');
+    } else if(Notification.permission==='denied'){
+      toast('Notifications bloquées — autorise-les dans les réglages du navigateur',true);
+    } else {
+      Notification.requestPermission().then(p=>{
+        if(p==='granted'){ _ppmNotifyOn=true; try{ localStorage.setItem('lwsq_ppmnotify_v1','1'); }catch(e){} bellBtn.classList.add('on'); toast('Alertes navigateur activées 🔔'); }
+        else toast('Permission refusée',true);
+      });
+    }
+  });
+})();
+
 /* ---------------- KPI + RENDER ---------------- */
 /* sparkline SVG (sans Chart.js, suit le thème via la couleur passée) */
 function sparkSVG(vals, color){
@@ -447,6 +565,29 @@ function deltaBadge(pct, higherIsBad){
   return `<span class="delta ${bad?'up':'down'}">${up?'▲':'▼'} ${Math.abs(pct)}%</span>`;
 }
 
+/* KPI animés : compte de l'ancienne valeur vers la nouvelle plutôt que
+   de basculer instantanément — donne du poids aux chiffres qui bougent. */
+const _kpiPrev=[];
+const _reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function animateKPIs(kp){
+  const nodes=document.querySelectorAll('#kpis .kv-n');
+  nodes.forEach((el,i)=>{
+    const target=+kp[i].n;
+    if(isNaN(target)){ return; }
+    const start=_kpiPrev[i]!=null?_kpiPrev[i]:target;
+    _kpiPrev[i]=target;
+    if(_reduceMotion || start===target){ el.textContent=fmt(target); return; }
+    const t0=performance.now(), dur=600;
+    requestAnimationFrame(function step(now){
+      const p=Math.min(1,(now-t0)/dur);
+      const eased=1-Math.pow(1-p,3);
+      el.textContent=fmt(start+(target-start)*eased);
+      if(p<1) requestAnimationFrame(step);
+    });
+  });
+}
+
+let _lastReport=null;
 function render(){
   const fr=applyFilters();
   renderFilterChrome();
@@ -460,6 +601,7 @@ function render(){
   const natTop=sumBy(fr,'na')[0];
   const ppmG=DATA.ppm.globalPPM, tgt=DATA.ppm.ppmTarget;
   const ppmState=ppmG>tgt?'bad':'ok';
+  updatePPMAlert(ppmG,tgt,ppmState==='bad');
   // séries hebdo (sparkline + tendance)
   const wkPairs=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
   const wkQty=wkPairs.map(([,v])=>v);
@@ -467,25 +609,18 @@ function render(){
   const wkEv=[...wkEvMap.entries()].sort((a,b)=>a[0]-b[0]).map(([,c])=>c);
   const qtyDelta=trendDelta(wkQty), evDelta=trendDelta(wkEv);
   const kp=[
-    {c:'k-crim',l:'Événements défaut',v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
-    {c:'k-crim',l:'Quantité défaut totale',v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
-    {c:ppmState==='bad'?'k-amb':'k-grn',l:'PPM global (Jan–Mai)',v:fmt(ppmG||0),u:'ppm',
+    {c:'k-crim',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
+    {c:'k-crim',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
+    {c:ppmState==='bad'?'k-amb':'k-grn',l:'PPM global (Jan–Mai)',n:ppmG||0,v:fmt(ppmG||0),u:'ppm',
       s:`<span class="pill ${ppmState}">${ppmState==='bad'?'▲ > cible':'▼ ≤ cible'}</span> cible ${tgt}`},
-    {c:'k-grn',l:'Sites actifs',v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
-    {c:'k-vio',l:'Machines impactées',v:machines,u:'',s:`sur la sélection courante`},
-    {c:'k-amb',l:'Nature dominante',v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
+    {c:'k-grn',l:'Sites actifs',n:sites,v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
+    {c:'k-vio',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
+    {c:'k-amb',l:'Nature dominante',n:natTop?natTop[1]:0,v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
   ];
   document.getElementById('kpis').innerHTML=kp.map(k=>`
     <div class="kpi ${k.c}"><div class="kl">${k.l}</div>
-    <div class="kv">${k.v}<span class="u">${k.u}</span></div><div class="ks">${k.s}</div>${k.extra||''}</div>`).join('');
-
-  // reconciliation
-  const f2qty=DATA.ppm.globalQty, f2prod=DATA.ppm.globalProd;
-  document.getElementById('recon').innerHTML=`
-    <div class="rc"><div class="rk">File 1 · terrain (sélection)</div><div class="rv">${fmt(qty)} <small>pcs</small></div><div class="rd">${fmt(events)} événements défaut</div></div>
-    <div class="rc"><div class="rk">File 2 · suivi (Jan–Mai)</div><div class="rv">${fmt(f2qty)} <small>pcs défaut</small></div><div class="rd">cumul des 4 sites</div></div>
-    <div class="rc"><div class="rk">File 2 · production</div><div class="rv">${fmt(f2prod/1e6)} <small>M pcs</small></div><div class="rd">base de calcul PPM</div></div>
-    <div class="rc"><div class="rk">PPM résultant</div><div class="rv" style="color:${ppmState==='bad'?C.amber:C.green}">${fmt(ppmG)} <small>vs ${tgt}</small></div><div class="rd">${ppmState==='bad'?'au-dessus de la cible':'dans la cible'}</div></div>`;
+    <div class="kv"><span class="kv-n">${k.v}</span><span class="u">${k.u}</span></div><div class="ks">${k.s}</div>${k.extra||''}</div>`).join('');
+  animateKPIs(kp);
 
   // synthèse exécutive (insight auto-mis à jour)
   const topMach=sumBy(fr,'ma').filter(([k])=>k&&k!=='Inconnue'&&k!=='NA')[0];
@@ -498,6 +633,9 @@ function render(){
     <div class="sy"><span class="sy-ic">${CAT_ICON[domSrc?domSrc[0]:'Outils']||'🔧'}</span><div><div class="sy-k">Source dominante</div><div class="sy-v">${domSrc?domSrc[0]:'—'} <small>${srcPct}%</small></div></div></div>
     <div class="sy"><span class="sy-ic">📊</span><div><div class="sy-k">PPM global</div><div class="sy-v">${fmt(ppmG||0)} <span class="delta ${ppmState==='bad'?'up':'down'}">${ppmState==='bad'?'▲':'▼'} cible ${tgt}</span></div></div></div>
     <div class="sy"><span class="sy-ic">📈</span><div><div class="sy-k">Tendance défauts</div><div class="sy-v">${qtyDelta===null?'<small>n/a</small>':deltaBadge(qtyDelta,true)+' <small>vs période préc.</small>'}</div></div></div>`;
+  // instantané des chiffres clés, réutilisé par "Envoyer le rapport" (e-mail) sans tout recalculer
+  _lastReport={events,qty,avg,ppmG,tgt,ppmState,natTop,natPct,topMach,domSrc,srcPct,qtyDelta,
+    dmin:DATA.meta.dmin,dmax:DATA.meta.dmax,filters:DIMS.filter(d=>filters[d.key].size).map(d=>`${d.label}: ${[...filters[d.key]].map(v=>d.fmt(v)).join(', ')}`)};
 
   // ===== Pilotage Qualité : dérive (SPC-lite), scrap, machines critiques, recommandation =====
   (function(){
@@ -545,35 +683,7 @@ function render(){
   document.getElementById('ph-filters').textContent=activeF.length?('Filtres actifs — '+activeF.join('  ·  ')):'Vue complète (aucun filtre appliqué)';
 
   // tendance : jour / semaine / mois (selon _trendG)
-  (function(){
-    const MLBL=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-    let agg, labels, vals, titleTxt, subTxt;
-    if(_trendG==='d'){
-      let all=[...sumBy(fr,'d')].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-      const capped=all.length>90; agg=capped?all.slice(-90):all;
-      labels=agg.map(([d])=>{ const p=String(d).split('-'); return p.length===3?(p[2]+'/'+p[1]):String(d); });
-      const shown=agg.reduce((s,[,v])=>s+(+v||0),0);
-      vals=agg.map(([d])=>d); titleTxt='Quantité de défauts par jour';
-      subTxt=`${agg.length} jour(s)${capped?' — 90 derniers affichés':''} · ${fmt(shown)} pcs · ⇲ double-clic = filtrer`;
-    } else if(_trendG==='m'){
-      const mm={}; fr.forEach(r=>{ const k=r.y+'-'+String(r.m).padStart(2,'0'); mm[k]=(mm[k]||0)+(+r.q||0); });
-      agg=Object.entries(mm).sort((a,b)=>a[0].localeCompare(b[0]));
-      labels=agg.map(([k])=>{ const [y,m]=k.split('-'); return (MLBL[+m]||m)+" '"+String(y).slice(2); });
-      vals=agg.map(([k])=>parseInt(k.split('-')[1],10)); titleTxt='Quantité de défauts par mois';
-      subTxt=`${agg.length} mois · ${fmt(qty)} pcs · ⇲ double-clic = filtrer`;
-    } else {
-      agg=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
-      labels=agg.map(([w])=>'S'+w);
-      vals=agg.map(([w])=>w); titleTxt='Quantité de défauts par semaine';
-      subTxt=`${agg.length} semaines · ${fmt(qty)} pcs · ⇲ double-clic = filtrer`;
-    }
-    charts.week.data.labels=labels;
-    charts.week.data.datasets[0].data=agg.map(([,v])=>v);
-    charts.week._vals=vals;
-    charts.week.update();
-    const t=document.getElementById('wk-title'); if(t) t.textContent=titleTxt;
-    const s=document.getElementById('wk-sub'); if(s) s.textContent=subTxt;
-  })();
+  renderTrendChart(fr);
 
   // PPM line — File 2 (Jan..Mai) + tout mois supplémentaire avec production saisie
   const MLAB=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
@@ -741,6 +851,39 @@ function render(){
   update8DLauncher(fr);
 }
 
+/* Tendance jour/semaine/mois : extraite de render() pour pouvoir être
+   redessinée seule (bascule j/s/m) sans repasser par tout le tableau de bord. */
+function renderTrendChart(fr){
+  const qty=fr.reduce((a,r)=>a+r.q,0);
+  const MLBL=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  let agg, labels, vals, titleTxt, subTxt;
+  if(_trendG==='d'){
+    let all=[...sumBy(fr,'d')].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+    const capped=all.length>90; agg=capped?all.slice(-90):all;
+    labels=agg.map(([d])=>{ const p=String(d).split('-'); return p.length===3?(p[2]+'/'+p[1]):String(d); });
+    const shown=agg.reduce((s,[,v])=>s+(+v||0),0);
+    vals=agg.map(([d])=>d); titleTxt='Quantité de défauts par jour';
+    subTxt=`${agg.length} jour(s)${capped?' — 90 derniers affichés':''} · ${fmt(shown)} pcs · ⇲ double-clic = filtrer`;
+  } else if(_trendG==='m'){
+    const mm={}; fr.forEach(r=>{ const k=r.y+'-'+String(r.m).padStart(2,'0'); mm[k]=(mm[k]||0)+(+r.q||0); });
+    agg=Object.entries(mm).sort((a,b)=>a[0].localeCompare(b[0]));
+    labels=agg.map(([k])=>{ const [y,m]=k.split('-'); return (MLBL[+m]||m)+" '"+String(y).slice(2); });
+    vals=agg.map(([k])=>parseInt(k.split('-')[1],10)); titleTxt='Quantité de défauts par mois';
+    subTxt=`${agg.length} mois · ${fmt(qty)} pcs · ⇲ double-clic = filtrer`;
+  } else {
+    agg=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
+    labels=agg.map(([w])=>'S'+w);
+    vals=agg.map(([w])=>w); titleTxt='Quantité de défauts par semaine';
+    subTxt=`${agg.length} semaines · ${fmt(qty)} pcs · ⇲ double-clic = filtrer`;
+  }
+  charts.week.data.labels=labels;
+  charts.week.data.datasets[0].data=agg.map(([,v])=>v);
+  charts.week._vals=vals;
+  charts.week.update();
+  const t=document.getElementById('wk-title'); if(t) t.textContent=titleTxt;
+  const s=document.getElementById('wk-sub'); if(s) s.textContent=subTxt;
+}
+
 /* ---------------- CARTE DE CHALEUR ---------------- */
 let heatDim='pc';
 const HEAT_LABELS={pc:'source',eq:'équipe',sh:'shift'};
@@ -856,7 +999,7 @@ function renderTable(fr){
     const k=th.dataset.k; if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=1;} renderTable(applyFilters());
   }));
 }
-document.getElementById('tsearch').addEventListener('input',()=>renderTable(applyFilters()));
+document.getElementById('tsearch').addEventListener('input',debounce(()=>renderTable(applyFilters()),200));
 document.getElementById('csvBtn').addEventListener('click',()=>{
   /* Export Excel (.xlsx) du tableau tel qu'affiché (filtres + recherche + tri appliqués) */
   if(!tableRows.length){ toast('Aucune ligne à exporter',true); return; }
@@ -1190,9 +1333,16 @@ function renderFish(causes){
 }
 /* roue 6M "3D explosée" : secteurs séparés + relief + % + lignes de rappel vers les icônes.
    Recalcule les comptes depuis le DOM (source de vérité = les cartes ci-dessous) et redessine le SVG. */
-/* roue 3D générique : items=[{key,label,icon,color,value}] ; color accepte var(--x) ou un hex.
-   Au-delà de maxWedges catégories, les plus petites sont regroupées dans un secteur "Autres"
-   (non cliquable) pour que les libellés radiaux restent lisibles quel que soit le jeu de données. */
+/* Roue à rayons (moyeu + rayons vers une jante) : chaque catégorie est un rayon
+   également espacé, terminé par un point dont la taille suit le poids relatif.
+   Le survol fait grossir le point SUR PLACE (transition CSS sur `r`, piloté par
+   la variable --dotr) plutôt que de le déplacer — un point qui s'éloigne finirait
+   par sortir de sous un curseur resté immobile et ferait scintiller le survol. */
+function fw3D2R(a){ return a*Math.PI/180; }
+function fw3Pt(ccx,ccy,rad,ang){ return {x:ccx+rad*Math.sin(fw3D2R(ang)),y:ccy-rad*Math.cos(fw3D2R(ang))}; }
+/* roue 3D generique : items=[{key,label,icon,color,value}] ; color accepte var(--x) ou un hex.
+   Au-dela de maxWedges categories, les plus petites sont regroupees dans un rayon "Autres"
+   (non cliquable) pour que les libelles radiaux restent lisibles quel que soit le jeu de donnees. */
 function buildWheelSVG(items, opts){
   opts=opts||{};
   const id=opts.id||'w', attr=opts.attr||'data-key', maxWedges=opts.maxWedges||8;
@@ -1204,46 +1354,57 @@ function buildWheelSVG(items, opts){
     const restVal=list.slice(maxWedges-1).reduce((s,it)=>s+(it.value||0),0);
     list=head.concat([{key:'__autres',label:'Autres',icon:'',color:'var(--dim)',value:restVal,noFilter:true}]);
   }
-  const n=Math.max(list.length,1), step=360/n;
+  const n=Math.max(list.length,1);
   const W=380,H=380,cx=190,cy=182;
-  const R=104,r=48,E=9,DEPTH=17,labelR=155,pctR=(R+r)/2+6;
-  const d2r=a=>a*Math.PI/180;
-  const pt=(ccx,ccy,rad,ang)=>({x:ccx+rad*Math.sin(d2r(ang)),y:ccy-rad*Math.cos(d2r(ang))});
+  const HUB=46, RIM=104, DOTMIN=7, DOTMAX=17, labelR=RIM+32;
   const total=list.reduce((s,it)=>s+(it.value||0),0)||1;
-  function wedgeD(ccx,ccy,a0,a1){
-    const o1=pt(ccx,ccy,R,a0), o2=pt(ccx,ccy,R,a1), i2=pt(ccx,ccy,r,a1), i1=pt(ccx,ccy,r,a0);
-    return `M${o1.x.toFixed(2)},${o1.y.toFixed(2)} A${R},${R} 0 0 1 ${o2.x.toFixed(2)},${o2.y.toFixed(2)} L${i2.x.toFixed(2)},${i2.y.toFixed(2)} A${r},${r} 0 0 0 ${i1.x.toFixed(2)},${i1.y.toFixed(2)} Z`;
+  const maxVal=Math.max(1,...list.map(it=>it.value||0));
+  /* Rayons egalement espaces (identite "roue", pas un camembert) : le pourcentage
+     reel reste affiche en toutes lettres a cote de chaque rayon, et le poids
+     relatif se lit dans la taille du point en bout de rayon. */
+  const step=360/n;
+  const mids=list.map((it,i)=>i*step+step/2);
+  /* Etiquettes radiales : quand deux rayons voisins tombent trop pres l'un de
+     l'autre en angle (y compris le raccord 360°/0°), on alterne un second
+     anneau plus exterieur pour eviter qu'elles ne se chevauchent. */
+  const LABEL_GAP=14; let _prevRing=0;
+  const labelRing=mids.map((m,i)=>{
+    if(i===0) return 0;
+    const close=Math.abs(m-mids[i-1])<LABEL_GAP;
+    return _prevRing=(close?1-_prevRing:0);
+  });
+  if(mids.length>1){
+    const gapWrap=360-Math.abs(mids[mids.length-1]-mids[0]);
+    if(gapWrap<LABEL_GAP && labelRing[mids.length-1]===labelRing[0]) labelRing[mids.length-1]=1-labelRing[0];
   }
-  let sides='',tops='',glosses='',texts='',leaders='',labels='';
+  let spokes='',dots='',labels='';
   list.forEach((it,i)=>{
-    const a0=i*step,a1=(i+1)*step,mid=(a0+a1)/2;
-    const ex=cx+E*Math.sin(d2r(mid)), ey=cy-E*Math.cos(d2r(mid));
+    const ang=mids[i];
     const val=it.value||0, pct=Math.round(val/total*100), color=it.color;
+    const dotR=DOTMIN+(val/maxVal)*(DOTMAX-DOTMIN);
     const clickAttrs=it.noFilter?'':` ${attr}="${esc(it.key)}" tabindex="0" role="button"`;
-    sides+=`<path d="${wedgeD(ex,ey+DEPTH,a0,a1)}" style="fill:${color};filter:brightness(.42)"/>`;
-    tops+=`<path class="fw3-top" ${clickAttrs} aria-label="${esc(it.label)} — ${formatN(val)}, ${pct}%" d="${wedgeD(ex,ey,a0,a1)}" style="fill:${color}"/>`;
-    glosses+=`<path d="${wedgeD(ex,ey,a0,a1)}" fill="url(#fwGloss-${id})" style="pointer-events:none"/>`;
-    const tp=pt(ex,ey,pctR,mid);
-    texts+=`<text x="${tp.x.toFixed(1)}" y="${tp.y.toFixed(1)}" class="fw3-pct" text-anchor="middle" dominant-baseline="middle">${val?pct+'%':'—'}</text>`;
-    const edge=pt(ex,ey,R+2,mid), out=pt(cx,cy,labelR,mid);
-    leaders+=`<line x1="${edge.x.toFixed(1)}" y1="${edge.y.toFixed(1)}" x2="${out.x.toFixed(1)}" y2="${out.y.toFixed(1)}" class="fw3-leader" style="stroke:${color}"/>`;
-    leaders+=`<circle cx="${out.x.toFixed(1)}" cy="${out.y.toFixed(1)}" r="3" style="fill:${color}"/>`;
-    const anchor=Math.sin(d2r(mid))>0.15?'start':Math.sin(d2r(mid))<-0.15?'end':'middle';
+    const delay=(i*30)+'ms', labelDelay=(i*30+90)+'ms';
+    const geo=`data-idx="${i}"`;
+    const p1=fw3Pt(cx,cy,HUB,ang), p2=fw3Pt(cx,cy,RIM,ang);
+    spokes+=`<line class="fw3-spoke" ${geo} style="stroke:${color};animation-delay:${delay}" x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}"/>`;
+    dots+=`<circle class="fw3-dot" ${geo} ${clickAttrs} aria-label="${esc(it.label)} — ${formatN(val)}, ${pct}%" style="fill:${color};--dotr:${dotR.toFixed(2)}px;animation-delay:${delay}" cx="${p2.x.toFixed(1)}" cy="${p2.y.toFixed(1)}"/>`;
+    const out=fw3Pt(cx,cy,labelR+labelRing[i]*26,ang);
+    const anchor=Math.sin(fw3D2R(ang))>0.15?'start':Math.sin(fw3D2R(ang))<-0.15?'end':'middle';
     const lx=out.x+(anchor==='start'?8:anchor==='end'?-8:0);
     const icRow=out.y-7, labRow=out.y+(it.icon?8:1), nRow=out.y+(it.icon?21:14);
-    labels+=`<g class="fw3-label" ${clickAttrs} aria-label="${esc(it.label)} — ${formatN(val)}">
+    labels+=`<g class="fw3-label" data-idx="${i}" ${clickAttrs} aria-label="${esc(it.label)} — ${formatN(val)}, ${pct}%" style="animation-delay:${labelDelay}">
       ${it.icon?`<text x="${lx.toFixed(1)}" y="${icRow.toFixed(1)}" text-anchor="${anchor}" class="fw3-ic">${it.icon}</text>`:''}
       <text x="${lx.toFixed(1)}" y="${labRow.toFixed(1)}" text-anchor="${anchor}" class="fw3-lab">${esc(it.label)}</text>
-      <text x="${lx.toFixed(1)}" y="${nRow.toFixed(1)}" text-anchor="${anchor}" class="fw3-n">${formatN(val)}</text>
+      <text x="${lx.toFixed(1)}" y="${nRow.toFixed(1)}" text-anchor="${anchor}" class="fw3-n">${formatN(val)} · ${pct}%</text>
     </g>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" class="fw3-svg" aria-hidden="true">
-    <defs><radialGradient id="fwGloss-${id}" cx="35%" cy="28%" r="75%">
-      <stop offset="0%" stop-color="#fff" stop-opacity=".38"/><stop offset="55%" stop-color="#fff" stop-opacity=".06"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient></defs>
-    <g>${sides}</g><g>${tops}</g><g>${glosses}</g>
-    <g class="fw3-leaders">${leaders}</g><g class="fw3-texts">${texts}</g><g class="fw3-labels">${labels}</g>
-    <circle cx="${cx}" cy="${cy}" r="${r-2}" class="fw3-hole"/>
+    <circle cx="${cx}" cy="${cy}" r="${RIM}" class="fw3-tire"/>
+    <circle cx="${cx}" cy="${cy}" r="${RIM}" class="fw3-rim"/>
+    <g class="fw3-spokes">${spokes}</g>
+    <g class="fw3-dots">${dots}</g>
+    <g class="fw3-labels">${labels}</g>
+    <circle cx="${cx}" cy="${cy}" r="${HUB-4}" class="fw3-hole"/>
     <text x="${cx}" y="${cy-6}" text-anchor="middle" class="fw3-total">${opts.centerValue!=null?opts.centerValue:fmt(total)}</text>
     <text x="${cx}" y="${cy+11}" text-anchor="middle" class="fw3-total-l">${esc(opts.centerLabel||'')}</text>
   </svg>`;
@@ -1279,6 +1440,36 @@ function updateSiteWheel(st){
   const el=document.getElementById('siteWheel'); if(!el) return;
   const items=st.map(([s,v],i)=>({key:s,label:s,icon:'',color:PALETTE[i%PALETTE.length],value:v}));
   el.innerHTML=buildWheelSVG(items,{id:'site',attr:'data-si',centerLabel:'DÉFAUTS'});
+}
+
+/* Tendance des causes racines 6M agrégée sur tous les 8D archivés (📦 Archiver ce 8D,
+   dans l'atelier 8D → D4). Indépendant des filtres du tableau de bord : ne se
+   redessine qu'à l'archivage d'un 8D ou à la réception d'une synchro distante. */
+function renderD8Trend(){
+  const el=document.getElementById('d8TrendWheel'), empty=document.getElementById('d8trendEmpty'), sub=document.getElementById('d8trend-sub');
+  if(!el) return;
+  const arch=lsGet(LS.d8archive,[]);
+  if(!arch.length){ el.innerHTML=''; el.style.display='none'; if(empty) empty.style.display='block'; if(sub) sub.textContent='Agrégé sur tous les 8D archivés'; return; }
+  el.style.display=''; if(empty) empty.style.display='none';
+  const totals={}; M_ORDER.forEach(k=>totals[k]=0);
+  arch.forEach(a=>{ M_ORDER.forEach(k=>{ totals[k]+=(a.counts&&a.counts[k])||0; }); });
+  const items=M_ORDER.map(k=>({key:k,label:M_KEYS[k].split(' / ')[0],icon:M_ICON[k],color:`var(${M_COLORVAR[k]})`,value:totals[k]}));
+  el.innerHTML=buildWheelSVG(items,{id:'d8trend',attr:'data-m6',maxWedges:6,centerLabel:'CAUSES',formatN:n=>n+' cause'+(n>1?'s':'')});
+  if(sub) sub.textContent=`${fmt(arch.length)} 8D archivé(s) · dernier le ${esc(new Date(arch[arch.length-1].ts).toLocaleDateString('fr-FR'))}`;
+}
+/* Archive la répartition causale (D4, comptage des causes listées par catégorie 6M)
+   du 8D actuellement ouvert, pour qu'elle vienne alimenter la tendance ci-dessus. */
+function archiveCurrent8D(){
+  const o=serialize8D();
+  const counts={}; let total=0;
+  M_ORDER.forEach(k=>{ const n=(o.fish&&o.fish[k]||[]).filter(v=>String(v).trim()).length; counts[k]=n; total+=n; });
+  if(!total){ toast('Aucune cause listée en D4 — complète l’analyse causale avant d’archiver',true); return; }
+  const arch=lsGet(LS.d8archive,[]);
+  arch.push({ts:Date.now(),ref:o.ref||'',problem:o.w_quoi||'',where:o.w_ou||'',counts});
+  if(arch.length>300) arch.splice(0,arch.length-300);
+  lsSet(LS.d8archive,arch);
+  renderD8Trend();
+  toast('8D archivé — tendance causes racines 6M mise à jour');
 }
 function wireWheelFilter(containerId,attr,dimKey){
   const el=document.getElementById(containerId); if(!el) return;
@@ -1387,6 +1578,50 @@ document.getElementById('printReport').addEventListener('click',()=>{
   document.querySelectorAll('.pop').forEach(p=>p.classList.remove('show'));
   window.print();
 });
+/* Rapport par e-mail : compose un e-mail (via mailto:) avec la synthèse chiffrée
+   de la sélection courante — un clic pour préparer l'envoi plutôt que de retaper
+   le point qualité à la main. Un site 100% statique (GitHub Pages) ne peut pas
+   expédier de mail lui-même sans backend : l'ouverture du client mail (avec le
+   corps déjà rédigé) est l'automatisation la plus poussée possible côté navigateur ;
+   un envoi vraiment planifié/silencieux demanderait une Cloud Function + un service
+   d'e-mail (SendGrid, etc.) à déployer séparément. */
+function emailReportBody(){
+  const r=_lastReport||{}; const NBSP=' ';
+  const lines=[
+    `QUALITY COCKPIT — CUTTING · LEONI Wiring Systems`,
+    `Rapport généré le ${new Date().toLocaleString('fr-FR')}`,
+    `Période base : ${r.dmin||'—'} → ${r.dmax||'—'}`,
+    r.filters&&r.filters.length ? `Filtres actifs : ${r.filters.join('  ·  ')}` : `Filtres actifs : aucun (vue complète)`,
+    ``,
+    `RÉSUMÉ`,
+    `- Événements défaut : ${fmt(r.events||0)}`,
+    `- Quantité défaut totale : ${fmt(r.qty||0)} pcs (moy. ${fmt(r.avg||0)} pcs/événement)`,
+    `- PPM global : ${fmt(r.ppmG||0)} — cible ${fmt(r.tgt||0)} (${r.ppmState==='bad'?'AU-DESSUS de la cible ⚠':'dans la cible ✓'})`,
+    `- Tendance défauts : ${r.qtyDelta==null?'n/a':(r.qtyDelta>0?'+':'')+r.qtyDelta+'% vs période précédente'}`,
+    ``,
+    `PRIORITÉS`,
+    `- Nature dominante : ${r.natTop?r.natTop[0]:'—'}${r.natTop?` (${r.natPct}% des défauts)`:''}`,
+    `- Machine #1 : ${r.topMach?r.topMach[0]+' — '+fmt(r.topMach[1])+' pcs':'—'}`,
+    `- Source dominante : ${r.domSrc?r.domSrc[0]+' ('+r.srcPct+'%)':'—'}`,
+    ``,
+    `Rapport détaillé (graphiques, Pareto, 8D…) : ouvrir le Quality Cockpit${NBSP}→${NBSP}📄 Rapport.`,
+  ];
+  return lines.join('\n');
+}
+function emailReport(){
+  if(!_lastReport){ toast('Rapport pas encore prêt, réessaie dans un instant',true); return; }
+  let to=''; try{ to=localStorage.getItem('lwsq_reportmail_v1')||''; }catch(e){}
+  const input=prompt('Destinataire(s) du rapport (séparés par des virgules) :', to);
+  if(input===null) return;
+  to=input.trim();
+  try{ localStorage.setItem('lwsq_reportmail_v1',to); }catch(e){}
+  const subject=`Quality Cockpit · Cutting — Point qualité du ${new Date().toLocaleDateString('fr-FR')}`;
+  const body=emailReportBody();
+  const url=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href=url;
+  toast('E-mail préparé — vérifie et envoie depuis ton client mail');
+}
+document.getElementById('emailReport').addEventListener('click',emailReport);
 window.addEventListener('afterprint',()=>document.body.classList.remove('print-8d'));
 
 /* --- édition dynamique (ajout / suppression) --- */
@@ -1400,14 +1635,14 @@ function goToFishCard(m){
   if(card){ card.scrollIntoView({behavior:'smooth',block:'center'}); card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash'); }
 }
 document.getElementById('d8Doc').addEventListener('click',e=>{
-  const seg=e.target.closest('.fw3-top,.fw3-label');
+  const seg=e.target.closest('.fw3-dot,.fw3-label');
   if(seg){ goToFishCard(seg.dataset.m); return; }
   if(e.target.closest('[data-del]')){ const c=e.target.closest('.cause'), tr=e.target.closest('tr'); (c||tr)&&(c||tr).remove(); if(c) updateFishWheelCounts(); }
   else if(e.target.closest('[data-addc]')){ e.target.closest('.mcard').querySelector('.m-list').insertAdjacentHTML('beforeend',causeRow('')); updateFishWheelCounts(); }
 });
 document.getElementById('d8Doc').addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ') return;
-  const seg=e.target.closest && e.target.closest('.fw3-top,.fw3-label');
+  const seg=e.target.closest && e.target.closest('.fw3-dot,.fw3-label');
   if(seg){ e.preventDefault(); goToFishCard(seg.dataset.m); }
 });
 document.getElementById('d8Doc').addEventListener('change',e=>{ if(e.target.matches('[data-chk]')) e.target.closest('.chk').classList.toggle('on',e.target.checked); });
@@ -1432,6 +1667,7 @@ function deserialize8D(o){
   const eff=document.querySelector('[data-8d="w_quoi"]')?.value; if(eff) document.getElementById('fishEffect').textContent=eff;
   calcNPR(); d8Built=true;
 }
+document.getElementById('d8Archive').addEventListener('click',archiveCurrent8D);
 document.getElementById('d8Export').addEventListener('click',()=>{
   const ref=(document.querySelector('[data-8d="ref"]')?.value||'8D').replace(/[^\w\-]/g,'_');
   const blob=new Blob([JSON.stringify(serialize8D(),null,2)],{type:'application/json'});
@@ -1627,9 +1863,24 @@ function mgData(){
   </div>
   <div class="modal-note" style="margin-top:16px">⚠️ <b>GitHub Pages</b> : le site est statique et le stockage est <b>propre à chaque navigateur</b>. Pour partager les données entre postes, exporte le JSON et importe-le ailleurs — ou branche une base <b>Firebase</b> pour une synchro multi-utilisateurs en temps réel.</div>`;
 }
+function mgAudit(){
+  const log=lsGet(LS.audit,[]).slice().reverse();
+  const q=(_auditQ||'').toLowerCase();
+  const rows=q?log.filter(e=>(e.who+' '+e.label+' '+(e.extra||'')).toLowerCase().includes(q)):log;
+  return `
+  <div class="mg-h">🕓 Journal d'audit</div>
+  <div class="mg-p">Trace qui a modifié quelle section de l'application, et quand — réclamations, référentiels, cibles, permissions… Synchronisé en temps réel entre les postes connectés (${fmt(log.length)} entrée(s), 500 max conservées).</div>
+  <div class="mg-data-actions" style="margin-bottom:12px">
+    <input id="audit-q" class="tsearch" placeholder="Filtrer (utilisateur, section…)" value="${esc(_auditQ||'')}">
+    ${window._isAdmin?'<button class="d8-tbtn warn" id="audit-clear">🗑 Vider le journal</button>':''}
+  </div>
+  ${rows.length?`<table class="d8-tbl"><thead><tr><th>Quand</th><th>Qui</th><th>Section</th></tr></thead><tbody>
+    ${rows.slice(0,300).map(e=>`<tr><td class="mono">${esc(new Date(e.ts).toLocaleString('fr-FR'))}</td><td>${esc(e.who)}</td><td>${esc(e.label)}${e.extra?' — '+esc(e.extra):''}</td></tr>`).join('')}
+  </tbody></table>`:`<div class="mg-imp-hint">Aucune entrée${q?' pour ce filtre':' pour l’instant — le journal se remplit dès qu’une donnée partagée est modifiée'}.</div>`}`;
+}
 
-let _mgTab='ops';
-const MG_RENDER={ops:mgOps,sups:mgSups,prod:mgProd,refs:mgRefs,data:mgData};
+let _mgTab='ops', _auditQ='';
+const MG_RENDER={ops:mgOps,sups:mgSups,prod:mgProd,refs:mgRefs,data:mgData,audit:mgAudit};
 function renderMgTab(tab){
   _mgTab=tab;
   document.querySelectorAll('#mgOverlay .mtab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
@@ -1730,6 +1981,16 @@ function wireMgTab(tab){
     $('tgt-reset').addEventListener('click',()=>{ SCRAP_TGT=null; lsDel(LS.scraptgt); $('tgt-scrap').value=''; render(); renderMgTab('prod'); toast('Cible scrap : valeurs File 2'); });
     if($('prodm-clear')) $('prodm-clear').addEventListener('click',()=>{ PRODM={}; lsDel(LS.prodm); renderMgTab('prod'); toast('Production par machine effacée'); });
   }
+  if(tab==='audit'){
+    $('audit-q').addEventListener('input',debounce(()=>{
+      _auditQ=$('audit-q').value; renderMgTab('audit');
+      const inp=$('audit-q'); if(inp){ inp.focus(); const p=inp.value.length; inp.setSelectionRange(p,p); }
+    },200));
+    if($('audit-clear')) $('audit-clear').addEventListener('click',()=>{
+      if(!confirm('Vider le journal d\'audit pour tout le monde ? Cette action est irréversible.')) return;
+      lsSet(LS.audit,[]); renderMgTab('audit'); toast('Journal d\'audit vidé');
+    });
+  }
 }
 
 /* --- import Excel / CSV des opérateurs ou superviseurs --- */
@@ -1740,8 +2001,8 @@ function normHire(v){
   let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
   return parseDMY(s) || '';
 }
-function importPeopleExcel(file, kind){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée (vérifie la connexion internet)',true); return; }
+async function importPeopleExcel(file, kind){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée (vérifie la connexion internet)',true); return; }
   const rd=new FileReader();
   rd.onload=e=>{
     try{
@@ -1777,8 +2038,8 @@ function importPeopleExcel(file, kind){
 }
 
 /* --- import Excel / CSV de la production journalière --- */
-function importProdExcel(file){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée (vérifie la connexion)',true); return; }
+async function importProdExcel(file){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée (vérifie la connexion)',true); return; }
   const rd=new FileReader();
   rd.onload=e=>{
     try{
@@ -1866,8 +2127,8 @@ function exportProd(){
 }
 
 /* ===== EXPORT / IMPORT EXCEL (.xlsx) PAR SECTION ===== */
-function dlXlsx(sheets, filename){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée (vérifie la connexion internet)',true); return; }
+async function dlXlsx(sheets, filename){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée (vérifie la connexion internet)',true); return; }
   try{
     const wb=XLSX.utils.book_new();
     sheets.forEach(s=>{ const ws=XLSX.utils.json_to_sheet(s.rows.length?s.rows:[{}]); XLSX.utils.book_append_sheet(wb,ws,String(s.name).slice(0,31)); });
@@ -2098,8 +2359,8 @@ function confirmDeleteRow(r){
   toast('Ligne supprimée — '+label);
 }
 /* import référentiels : natures (+ source) et familles */
-function importMachTypeExcel(file){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée',true); return; }
+async function importMachTypeExcel(file){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée',true); return; }
   const rd=new FileReader();
   rd.onload=e=>{ try{
     const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
@@ -2133,8 +2394,8 @@ function importMachTypeExcel(file){
   rd.readAsArrayBuffer(file);
 }
 
-function importRefsExcel(file){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée',true); return; }
+async function importRefsExcel(file){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée',true); return; }
   const rd=new FileReader();
   rd.onload=e=>{ try{
     const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
@@ -2169,8 +2430,8 @@ const CLAIM_IMPORT_COLS=[
   {k:'na',re:/nature|d[eé]faut|defaut/}, {k:'op',re:/op[eé]rateur|operator|matricule/}, {k:'su',re:/supervis/},
   {k:'fa',re:/famille|family/}, {k:'aql',re:/aql/}, {k:'nb',re:/^nb$/}
 ];
-function importClaimsExcel(file){
-  if(typeof XLSX==='undefined'){ toast('Librairie Excel non chargée',true); return; }
+async function importClaimsExcel(file){
+  try{ await ensureXLSX(); }catch(e){ toast('Librairie Excel non chargée',true); return; }
   const rd=new FileReader();
   rd.onload=e=>{ try{
     const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
@@ -2311,6 +2572,23 @@ function applyDensity(d){
   if(b) b.addEventListener('click',()=>applyDensity(document.documentElement.getAttribute('data-density')==='compact'?'confort':'compact'));
 })();
 
+/* ---- MODE TABLETTE (cibles tactiles agrandies, mise en page simplifiée) ---- */
+let _tabletMode=false;
+function applyTabletMode(on){
+  _tabletMode=!!on;
+  if(_tabletMode) document.documentElement.setAttribute('data-tablet','1');
+  else document.documentElement.removeAttribute('data-tablet');
+  const b=document.getElementById('tabletTgl');
+  if(b){ b.classList.toggle('on',_tabletMode); b.querySelector('.tt').textContent=_tabletMode?'Tablette':'Écran'; }
+  lsSet(LS.tablet,_tabletMode);
+  if(window._booted){ try{ Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}}); }catch(e){} }
+}
+(function(){
+  applyTabletMode(!!lsGet(LS.tablet,false));
+  const b=document.getElementById('tabletTgl');
+  if(b) b.addEventListener('click',()=>applyTabletMode(!_tabletMode));
+})();
+
 /* ===================== PWA · INSTALLATION (téléphone + PC) ===================== */
 (function(){
   function makeIcon(size){
@@ -2413,7 +2691,7 @@ wireChartFilter('chWeek',  ()=>charts.week,  ()=>({d:'day',w:'week',m:'month'}[_
 /* Sélecteur de granularité de la tendance (Jour / Semaine / Mois) */
 (function(){ const seg=document.getElementById('wk-seg'); if(!seg) return;
   seg.addEventListener('click',e=>{ const b=e.target.closest('button[data-g]'); if(!b) return;
-    _trendG=b.dataset.g; seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); render();
+    _trendG=b.dataset.g; seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); renderTrendChart(applyFilters());
   });
 })();
 /* Fenêtre Pareto NOK — dashboard intégré (iframe isolée, base64, aucun fichier externe) */
@@ -2452,6 +2730,82 @@ document.querySelectorAll('.heat-tab').forEach(t=>t.addEventListener('click',()=
   heatDim=t.dataset.hd; renderHeatmap(applyFilters());
 }));
 
+/* ================= PALETTE DE COMMANDE (Ctrl+K) =================
+   Accès rapide clavier aux actions principales, sans avoir à chercher
+   le bouton dans l'interface. Se ferme sur Échap ou clic hors carte. */
+(function(){
+  const gid=id=>document.getElementById(id);
+  const overlay=gid('cmdPalette'), input=gid('cmdpInput'), list=gid('cmdpList');
+  if(!overlay||!input||!list) return;
+  let items=[], sel=0;
+
+  function visible(id){ const e=gid(id); return !!e && getComputedStyle(e).display!=='none'; }
+  function clickBtn(id){ const e=gid(id); if(e) e.click(); }
+
+  function buildCommands(){
+    const cmds=[
+      {icon:'➕',label:'Nouvelle réclamation',run:()=>clickBtn('openAdd')},
+      {icon:'⚙️',label:'Gestion (référentiels, imports, opérateurs…)',run:()=>clickBtn('openMg')},
+      {icon:'📄',label:'Rapport imprimable',run:()=>clickBtn('printReport')},
+      {icon:'📧',label:'Envoyer le rapport par e-mail',run:()=>clickBtn('emailReport')},
+      {icon:'📊',label:'Pareto NOK',run:()=>clickBtn('nokBtn3')},
+      {icon:'⬇️',label:'Exporter les défauts (Excel)',run:()=>exportClaimsXlsx()},
+      {icon:'✕',label:'Réinitialiser tous les filtres',run:()=>clickBtn('resetBtn')},
+      {icon: curTheme==='light'?'🌙':'☀️',label:'Basculer le thème '+(curTheme==='light'?'sombre':'clair'),run:()=>clickBtn('themeTgl')},
+      {icon:'▤',label:'Basculer la densité d’affichage',run:()=>clickBtn('densTgl')},
+      {icon:'📺',label:'Mode télévision (plein écran)',run:()=>clickBtn('tvBtn')},
+    ];
+    if(typeof _tabletMode!=='undefined') cmds.push({icon:'📱',label:'Basculer le mode tablette',run:()=>clickBtn('tabletTgl')});
+    if(visible('open8D')) cmds.push({icon:'📋',label:'Atelier 8D — problème prioritaire',run:()=>clickBtn('open8D')});
+    if(visible('fbAccounts')) cmds.push({icon:'👤',label:'Comptes & accès',run:()=>clickBtn('fbAccounts')});
+    if(visible('fbSignOut')) cmds.push({icon:'⎋',label:'Se déconnecter',run:()=>clickBtn('fbSignOut')});
+    DIMS.forEach(d=>{ if(!d.hidden && d._btn) cmds.push({icon:'▾',label:'Filtre : '+d.label,run:()=>d._btn.click()}); });
+    return cmds;
+  }
+
+  function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+
+  function renderList(q){
+    const nq=norm(q);
+    const all=buildCommands();
+    items = nq ? all.filter(c=>norm(c.label).includes(nq)) : all;
+    sel=0;
+    list.innerHTML = items.length
+      ? items.map((c,i)=>`<div class="cmdp-item${i===0?' sel':''}" data-i="${i}"><span class="cmdp-ic">${c.icon}</span><span class="cmdp-lb">${esc(c.label)}</span></div>`).join('')
+      : `<div class="cmdp-empty">Aucune action ne correspond</div>`;
+  }
+
+  function highlight(){
+    list.querySelectorAll('.cmdp-item').forEach((el,i)=>el.classList.toggle('sel',i===sel));
+    const cur=list.querySelector('.cmdp-item.sel'); if(cur) cur.scrollIntoView({block:'nearest'});
+  }
+
+  function run(i){ const c=items[i]; if(!c) return; close(); try{ c.run(); }catch(e){} }
+
+  function open(){
+    overlay.classList.add('show'); input.value=''; renderList(''); input.focus();
+  }
+  function close(){ overlay.classList.remove('show'); }
+
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey) && !e.shiftKey && !e.altKey && (e.key==='k'||e.key==='K')){
+      e.preventDefault();
+      overlay.classList.contains('show') ? close() : open();
+    } else if(e.key==='Escape' && overlay.classList.contains('show')){
+      close();
+    }
+  });
+  input.addEventListener('input',()=>{ renderList(input.value); highlight(); });
+  input.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); sel=Math.min(sel+1,items.length-1); highlight(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); sel=Math.max(sel-1,0); highlight(); }
+    else if(e.key==='Enter'){ e.preventDefault(); run(sel); }
+  });
+  list.addEventListener('click',e=>{ const it=e.target.closest('.cmdp-item'); if(it) run(+it.dataset.i); });
+  overlay.addEventListener('mousedown',e=>{ if(e.target===overlay) close(); });
+  const cmdpBtn=gid('cmdpBtn'); if(cmdpBtn) cmdpBtn.addEventListener('click',open);
+})();
+
 /* ---- BOOT ---- */
 const _savedTheme=lsGet(LS.theme,'dark');
 curTheme=_savedTheme;
@@ -2459,24 +2813,58 @@ if(_savedTheme==='light') document.documentElement.setAttribute('data-theme','li
 (function(){const b=document.getElementById('themeTgl');b.querySelector('.ic').textContent=(_savedTheme==='light')?'🌙':'☀️';b.querySelector('.tt').textContent=(_savedTheme==='light')?'Sombre':'Clair';})();
 initCharts();
 render();
+renderD8Trend();
 window._booted=true;
+/* Le tableau de bord est peint : on efface le squelette de chargement
+   (posé en dur dans le HTML pour couvrir aussi le temps de chargement
+   des polices/CSS/Chart.js, avant même que ce script ne s'exécute). */
+requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  const sk=document.getElementById('loadSkeleton');
+  if(sk){ sk.classList.add('hide'); setTimeout(()=>sk.remove(),400); }
+}));
 
 /* ===================== MODE TÉLÉVISION ===================== */
 (function(){
   function tvCompute(){
     const yr=Math.max.apply(null, DATA.rows.map(r=>+r.y||0));
     const rows=DATA.rows.filter(r=>(+r.y||0)===yr);
-    let qty=0; const byNa={}, byMa={}, byPc={}, sites={};
+    let qty=0; const byNa={}, byMa={}, byPc={}, byWk={}, sites={};
     rows.forEach(r=>{ const q=+r.q||0; qty+=q;
       if(r.na) byNa[r.na]=(byNa[r.na]||0)+q;
       if(r.ma && !['Inconnue','NA','—'].includes(r.ma)) byMa[r.ma]=(byMa[r.ma]||0)+q;
       if(r.pc) byPc[r.pc]=(byPc[r.pc]||0)+q;
       if(r.si && r.si!=='Inconnu') sites[r.si]=1;
+      if(r.w!=null) byWk[r.w]=(byWk[r.w]||0)+q;
     });
     const top=o=>{ let k=null,v=-1; for(const x in o){ if(o[x]>v){v=o[x];k=x;} } return k!=null?[k,v]:null; };
+    const topN=(o,n)=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,n);
+    const weeks=Object.keys(byWk).map(Number).sort((a,b)=>a-b).slice(-14).map(w=>({w,v:byWk[w]}));
     return { yr, events:rows.length, qty, nat:top(byNa), mac:top(byMa), src:top(byPc), sites:Object.keys(sites).length,
+      macTop5:topN(byMa,5), weeks,
       ppm:DATA.ppm.globalPPM, tgt:DATA.ppm.ppmTarget,
       months:DATA.ppm.months.map((mn,i)=>{ const q=DATA.ppm.qty.Total[i]||0,p=DATA.ppm.production[i]||0; return {mn, v:p?Math.round(q/p*1e6):null}; }) };
+  }
+  /* Graphiques Chart.js du mode TV — créés une fois (canvas visibles au premier
+     rendu), puis simplement mis à jour à chaque rafraîchissement (15 s). */
+  let trendChart=null, machChart=null;
+  function ensureTvCharts(){
+    const tvTooltip={backgroundColor:'#0f1626',borderColor:'#2a3650',borderWidth:1,titleColor:'#eef2f9',bodyColor:'#c4d0e3',padding:10};
+    const tc=document.getElementById('tvTrendChart');
+    if(tc && !trendChart && typeof Chart!=='undefined'){
+      trendChart=new Chart(tc,{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:'#fb5a6a',borderRadius:6,maxBarThickness:36}]},
+        options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},
+          plugins:{legend:{display:false},tooltip:tvTooltip},
+          scales:{x:{ticks:{color:'#9fb1cc',font:{size:13}},grid:{display:false}},
+                   y:{ticks:{color:'#9fb1cc',font:{size:12}},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:true}}}});
+    }
+    const mc=document.getElementById('tvMachChart');
+    if(mc && !machChart && typeof Chart!=='undefined'){
+      machChart=new Chart(mc,{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:'#22d3ee',borderRadius:6,maxBarThickness:28}]},
+        options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:400},
+          plugins:{legend:{display:false},tooltip:tvTooltip},
+          scales:{x:{ticks:{color:'#9fb1cc',font:{size:12}},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:true},
+                   y:{ticks:{color:'#eef2f9',font:{size:14,weight:'700'}},grid:{display:false}}}}});
+    }
   }
   const F=(typeof fmt==='function')?fmt:(n=>String(n));
   function set(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
@@ -2491,6 +2879,9 @@ window._booted=true;
     set('tvMac',d.mac?d.mac[0]:'—'); set('tvMacV',d.mac?F(d.mac[1])+' pcs':'');
     set('tvSrc',d.src?d.src[0]:'—'); set('tvSrcV',d.src?F(d.src[1])+' pcs':'');
     set('tvNat',d.nat?d.nat[0]:'—'); set('tvNatV',d.nat?F(d.nat[1])+' pcs':'');
+    ensureTvCharts();
+    if(trendChart){ trendChart.data.labels=d.weeks.map(x=>'S'+x.w); trendChart.data.datasets[0].data=d.weeks.map(x=>x.v); trendChart.update(); }
+    if(machChart){ machChart.data.labels=d.macTop5.map(x=>x[0]); machChart.data.datasets[0].data=d.macTop5.map(x=>x[1]); machChart.update(); }
     const maxV=Math.max.apply(null,[d.tgt].concat(d.months.map(x=>x.v||0)))||1;
     const mb=document.getElementById('tvMonths');
     if(mb) mb.innerHTML=d.months.map(x=>{
@@ -2569,12 +2960,14 @@ function applyAccessGates(){
   const openAdd=document.getElementById('openAdd'); if(openAdd) openAdd.style.display = claim==='edit' ? '' : 'none';
   const openMg=document.getElementById('openMg'); if(openMg) openMg.style.display = gestion==='edit' ? '' : 'none';
   const printReport=document.getElementById('printReport'); if(printReport) printReport.style.display = report==='none' ? 'none' : '';
+  const emailReportBtn=document.getElementById('emailReport'); if(emailReportBtn) emailReportBtn.style.display = report==='none' ? 'none' : '';
   const rmEdit=document.getElementById('rm-edit'); if(rmEdit) rmEdit.style.display = dash==='edit' ? '' : 'none';
   const rmDel=document.getElementById('rm-del'); if(rmDel) rmDel.style.display = dash==='edit' ? '' : 'none';
   const nokBtn=document.getElementById('nokBtn3'); if(nokBtn) nokBtn.style.display = pnok==='none' ? 'none' : '';
   const d8Print=document.getElementById('d8Print'); if(d8Print) d8Print.style.display = d8report==='none' ? 'none' : '';
 }
 /* Rendu de la table éditable (modale Comptes & accès) — lecture seule pour les non-admins */
+const PERM_ICONS={none:'🚫',read:'👁',edit:'✏️'};
 function renderRolePerms(){
   const tbody=document.getElementById('rolePermsBody'); if(!tbody) return;
   const thead=document.getElementById('rolePermsHead');
@@ -2584,15 +2977,15 @@ function renderRolePerms(){
     const row=ROLE_PERMS[r]||DEFAULT_ROLE_PERMS[r];
     return '<tr><th>'+esc(QROLE_LABELS[r])+'</th>'+MODULE_ORDER.map(m=>{
       const lvl=row[m]||'none';
-      return '<td><button type="button" class="permpill '+lvl+'"'+(editable?' data-permcell="'+r+':'+m+'"':' disabled')+'>'+PERM_LABELS[lvl]+'</button></td>';
+      const opts=PERM_ORDER.map(p=>'<option value="'+p+'"'+(p===lvl?' selected':'')+'>'+PERM_ICONS[p]+' '+PERM_LABELS[p]+'</option>').join('');
+      return '<td><select class="permsel '+lvl+'"'+(editable?' data-permcell="'+r+':'+m+'"':' disabled')+'>'+opts+'</select></td>';
     }).join('')+'</tr>';
   }).join('');
 }
-document.getElementById('rolePermsBody')?.addEventListener('click',e=>{
-  const btn=e.target.closest('[data-permcell]'); if(!btn||!window._isSuperAdmin) return;
-  const [r,m]=btn.getAttribute('data-permcell').split(':');
-  const cur=(ROLE_PERMS[r]&&ROLE_PERMS[r][m])||'none';
-  const next=PERM_ORDER[(PERM_ORDER.indexOf(cur)+1)%PERM_ORDER.length];
+document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
+  const sel=e.target.closest('[data-permcell]'); if(!sel||!window._isSuperAdmin) return;
+  const [r,m]=sel.getAttribute('data-permcell').split(':');
+  const next=sel.value;
   ROLE_PERMS={...ROLE_PERMS,[r]:{...ROLE_PERMS[r],[m]:next}};
   lsSet(LS.roleperms, ROLE_PERMS);
   renderRolePerms();
@@ -2643,7 +3036,7 @@ document.getElementById('rolePermsBody')?.addEventListener('click',e=>{
     measurementId: "G-PFYPG23JY2"
   };
   // Clés répliquées vers le cloud (le thème reste propre à chaque poste)
-  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms];
+  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms, LS.audit, LS.d8archive];
   window._FB_SYNCKEYS = new Set(FB_KEYS);
 
   const $f = id => document.getElementById(id);
@@ -2671,6 +3064,15 @@ document.getElementById('rolePermsBody')?.addEventListener('click',e=>{
   // Application d'une mise à jour distante : maj cache + variable + rendu
   function applyRemote(key, val){
     try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+    if(key===LS.audit){
+      // simple journal, pas de variable en mémoire à resynchroniser : on rafraîchit juste l'onglet s'il est ouvert
+      try{ if(typeof _mgTab!=='undefined' && _mgTab==='audit') renderMgTab('audit'); }catch(e){}
+      return;
+    }
+    if(key===LS.d8archive){
+      try{ renderD8Trend(); }catch(e){}
+      return;
+    }
     switch(key){
       case LS.prod:     PROD = toArr(val); break;
       case LS.prodm:    PRODM = (val && typeof val==='object')?val:{}; break;
