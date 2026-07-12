@@ -2926,6 +2926,18 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
                    y:{ticks:{color:'#eef2f9',font:{size:14,weight:'700'}},grid:{display:false}}}}});
     }
   }
+  /* Met à l'échelle le canevas 1920×1080 pour qu'il remplisse l'écran (TV, moniteur,
+     fenêtre) sans jamais rogner ni faire défiler — voir le commentaire CSS #tvMode. Ajuste
+     aussi le devicePixelRatio des graphiques Chart.js pour qu'ils restent nets à toute échelle. */
+  function tvFit(){
+    const m=document.getElementById('tvMode'); if(!m||m.style.display!=='flex') return;
+    const canvas=document.getElementById('tvCanvas'); if(!canvas) return;
+    const s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    canvas.style.transform='scale('+s+')';
+    const dpr=(window.devicePixelRatio||1)*s;
+    if(trendChart){ trendChart.options.devicePixelRatio=dpr; trendChart.resize(); }
+    if(machChart){ machChart.options.devicePixelRatio=dpr; machChart.resize(); }
+  }
   const F=(typeof fmt==='function')?fmt:(n=>String(n));
   function set(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
   function tvRender(){
@@ -2956,11 +2968,14 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const dd=document.getElementById('tvDate'); if(dd) dd.textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   }
   let t1=null,t2=null;
-  function tvOpen(){ const m=document.getElementById('tvMode'); if(!m) return; m.style.display='flex'; tvRender(); tvClock(); t1=setInterval(tvClock,1000); t2=setInterval(tvRender,15000); try{ if(m.requestFullscreen) m.requestFullscreen(); }catch(e){} }
-  function tvClose(){ const m=document.getElementById('tvMode'); if(m) m.style.display='none'; if(t1)clearInterval(t1); if(t2)clearInterval(t2); t1=t2=null; try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){} }
+  function tvOpen(){ const m=document.getElementById('tvMode'); if(!m) return; m.style.display='flex'; document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; tvRender(); tvClock(); tvFit(); t1=setInterval(tvClock,1000); t2=setInterval(tvRender,15000); try{ if(m.requestFullscreen) m.requestFullscreen().then(tvFit).catch(()=>{}); }catch(e){} }
+  function tvClose(){ const m=document.getElementById('tvMode'); if(m) m.style.display='none'; document.documentElement.style.overflow=''; document.body.style.overflow=''; if(t1)clearInterval(t1); if(t2)clearInterval(t2); t1=t2=null; try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){} }
   const b=document.getElementById('tvBtn'); if(b) b.addEventListener('click',tvOpen);
   const x=document.getElementById('tvClose'); if(x) x.addEventListener('click',tvClose);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ const m=document.getElementById('tvMode'); if(m&&m.style.display==='flex') tvClose(); } });
+  window.addEventListener('resize',tvFit);
+  window.addEventListener('orientationchange',tvFit);
+  document.addEventListener('fullscreenchange',tvFit);
 })();
 /* ===================== FIN MODE TV ===================== */
 

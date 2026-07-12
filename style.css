@@ -118,51 +118,58 @@
 .ppm-mo .mv{font-size:14px;font-weight:700;margin-top:1px}
 .ppm-mo.over{background:rgba(251,90,106,.08)}
 .ppm-mo.under{background:rgba(52,211,153,.08)}
-/* --- Mode télévision --- (couleurs sur les variables de thème : suit le bouton Clair/Sombre) */
-#tvMode{--pistachio:#73f516;--pistachio-ink:#476438;
-  position:fixed;inset:0;z-index:99990;display:none;flex-direction:column;
+/* --- Mode télévision --- (couleurs sur les variables de thème : suit le bouton Clair/Sombre)
+   Canevas de conception FIXE 1920×1080 (.tv-canvas), mis à l'échelle par JS (tvFit() dans
+   app.js, via transform:scale) pour remplir n'importe quel écran — TV, moniteur, fenêtre
+   réduite — SANS jamais rogner ni faire défiler le contenu : tout reste toujours visible,
+   quelle que soit la résolution ou le ratio d'écran. Les hauteurs internes (flex:0 0 …px)
+   totalisent exactement 1080px, donc aucun débordement possible. */
+#tvMode{--pistachio:#73f516;--pistachio-ink:#476438;--tv-label:color-mix(in srgb,var(--hi) 40%,var(--mid));
+  position:fixed;inset:0;z-index:99990;display:none;align-items:center;justify-content:center;overflow:hidden;
   background:radial-gradient(1400px 700px at 50% -5%,color-mix(in srgb,var(--accent) 14%,var(--bg)) 0%,var(--bg) 65%);
-  color:var(--hi);font-family:'Inter',system-ui,sans-serif;padding:clamp(12px,2vw,28px)}
-#tvMode .tv-top{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  border-bottom:3px solid var(--pistachio);padding-bottom:clamp(8px,1.4vw,16px)}
+}
+#tvMode .tv-canvas{width:1920px;height:1080px;flex:none;transform-origin:center center;
+  display:flex;flex-direction:column;gap:16px;box-sizing:border-box;padding:32px 48px;overflow:hidden;
+  color:var(--hi);font-family:'Inter',system-ui,sans-serif}
+#tvMode .tv-top{flex:0 0 60px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border-bottom:3px solid var(--pistachio);padding-bottom:12px}
 #tvMode .tv-brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-#tvMode .tv-logo{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:clamp(22px,3vw,40px);letter-spacing:1px;color:var(--hi)}
-#tvMode .tv-sub{font-size:clamp(13px,1.4vw,20px);color:var(--mid)}
-#tvMode .tv-year{font-size:clamp(11px,1.1vw,15px);color:var(--pistachio-ink);background:var(--pistachio);border:1px solid var(--pistachio);border-radius:6px;padding:1px 8px;font-weight:700}
+#tvMode .tv-logo{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:34px;letter-spacing:1px;color:var(--hi)}
+#tvMode .tv-sub{font-size:17px;color:var(--tv-label);font-weight:600}
+#tvMode .tv-year{font-size:14px;color:var(--pistachio-ink);background:var(--pistachio);border:1px solid var(--pistachio);border-radius:6px;padding:2px 10px;font-weight:700}
 #tvMode .tv-time{text-align:right}
-#tvMode .tv-clock{font-size:clamp(20px,2.6vw,38px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
-#tvMode .tv-date{font-size:clamp(11px,1.1vw,16px);color:var(--mid);text-transform:capitalize}
-#tvMode .tv-x{background:var(--panel2);border:1px solid var(--line2);color:var(--hi);border-radius:10px;width:clamp(40px,3.4vw,52px);height:clamp(40px,3.4vw,52px);cursor:pointer;font-size:clamp(16px,1.6vw,22px);flex:none}
-#tvMode .tv-body{flex:1;display:flex;flex-direction:column;gap:clamp(8px,1.2vh,16px);padding-top:clamp(10px,1.6vh,20px);min-height:0;overflow-y:auto}
-#tvMode .tv-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--panel-grad);border:1px solid var(--line);border-radius:18px;padding:clamp(10px,1.4vh,20px) clamp(18px,2.4vw,36px)}
-#tvMode .tv-hero-k{font-size:clamp(13px,1.4vw,20px);letter-spacing:2px;color:var(--mid);text-transform:uppercase}
-#tvMode .tv-hero-v{font-size:clamp(56px,11vw,150px);font-weight:800;line-height:.95;font-variant-numeric:tabular-nums}
-#tvMode .tv-hero-s{font-size:clamp(13px,1.5vw,22px);color:var(--mid);margin-top:6px}
-#tvMode .tv-badge{font-size:clamp(16px,2vw,30px);font-weight:800;letter-spacing:1px;border-radius:14px;padding:clamp(10px,1.6vh,22px) clamp(16px,2vw,34px);white-space:nowrap}
+#tvMode .tv-clock{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+#tvMode .tv-date{font-size:15px;color:var(--tv-label);text-transform:capitalize;font-weight:600}
+#tvMode .tv-x{background:var(--panel2);border:1px solid var(--line2);color:var(--hi);border-radius:10px;width:44px;height:44px;cursor:pointer;font-size:18px;flex:none}
+#tvMode .tv-body{flex:1;display:flex;flex-direction:column;gap:16px;min-height:0}
+#tvMode .tv-hero{flex:0 0 210px;display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--panel-grad);border:1px solid var(--line);border-radius:18px;padding:18px 36px;box-sizing:border-box}
+#tvMode .tv-hero-k{font-size:19px;letter-spacing:3px;color:var(--tv-label);text-transform:uppercase}
+#tvMode .tv-hero-v{font-size:126px;font-weight:800;line-height:.95;font-variant-numeric:tabular-nums}
+#tvMode .tv-hero-s{font-size:20px;color:var(--tv-label);margin-top:8px;font-weight:600}
+#tvMode .tv-badge{font-size:28px;font-weight:800;letter-spacing:1px;border-radius:14px;padding:20px 34px;white-space:nowrap}
 #tvMode .tv-badge.bad{background:color-mix(in srgb,var(--crimson) 18%,transparent);color:var(--crimson);border:2px solid color-mix(in srgb,var(--crimson) 50%,transparent)}
 #tvMode .tv-badge.good{background:color-mix(in srgb,var(--green) 18%,transparent);color:var(--green);border:2px solid color-mix(in srgb,var(--green) 50%,transparent)}
-#tvMode .tv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(10px,1.4vw,20px)}
-#tvMode .tv-tile{background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:clamp(10px,1.6vh,22px);text-align:center;display:flex;flex-direction:column;justify-content:center}
-#tvMode .tv-tv{font-size:clamp(28px,4.5vw,60px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
-#tvMode .tv-tl{font-size:clamp(11px,1.2vw,17px);color:var(--mid);text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+#tvMode .tv-grid{flex:0 0 128px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+#tvMode .tv-tile{background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:14px 18px;box-sizing:border-box;text-align:center;display:flex;flex-direction:column;justify-content:center;min-width:0}
+#tvMode .tv-tv{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+#tvMode .tv-tl{font-size:16px;color:var(--tv-label);text-transform:uppercase;letter-spacing:1px;margin-top:8px;font-weight:600}
 #tvMode .tv-top3{text-align:left}
-#tvMode .tv-t3k{font-size:clamp(11px,1.2vw,16px);color:var(--mid);text-transform:uppercase;letter-spacing:1px}
-#tvMode .tv-t3v{font-size:clamp(20px,2.6vw,38px);font-weight:800;margin-top:6px;line-height:1.05;word-break:break-word}
-#tvMode .tv-t3v.tv-nat{font-size:clamp(15px,1.9vw,26px)}
-#tvMode .tv-t3s{font-size:clamp(12px,1.3vw,18px);color:var(--crimson);margin-top:4px}
-#tvMode .tv-charts{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,1.4vw,20px);flex:1;min-height:clamp(110px,16vh,190px)}
-#tvMode .tv-chart-wrap{background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:clamp(10px,1.4vh,18px) clamp(14px,1.8vw,26px);display:flex;flex-direction:column;min-height:0}
+#tvMode .tv-t3k{font-size:15px;color:var(--tv-label);text-transform:uppercase;letter-spacing:1px;font-weight:600;display:flex;align-items:center;gap:6px}
+#tvMode .tv-t3v{font-size:38px;font-weight:800;margin-top:8px;line-height:1.1;word-break:break-word;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+#tvMode .tv-t3v.tv-nat{font-size:27px;-webkit-line-clamp:2}
+#tvMode .tv-t3s{font-size:17px;color:var(--crimson);margin-top:5px;font-weight:600}
+#tvMode .tv-charts{flex:0 0 230px;display:grid;grid-template-columns:1fr 1fr;gap:18px;min-height:0}
+#tvMode .tv-chart-wrap{background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:14px 22px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
 #tvMode .tv-chart-cv{flex:1;min-height:0;position:relative}
-@media(max-width:900px){ #tvMode .tv-charts{grid-template-columns:1fr} }
-#tvMode .tv-months-wrap{background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:clamp(10px,1.4vh,18px) clamp(14px,1.8vw,26px)}
-#tvMode .tv-months-h{font-size:clamp(12px,1.3vw,18px);color:var(--mid);text-transform:uppercase;letter-spacing:1px;margin-bottom:clamp(6px,1vh,12px)}
-#tvMode .tv-months{display:flex;gap:clamp(8px,1.4vw,22px);align-items:flex-end;height:clamp(70px,10vh,130px)}
-#tvMode .tv-mo{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:6px}
+#tvMode .tv-months-wrap{flex:0 0 140px;background:var(--panel-grad);border:1px solid var(--line);border-radius:16px;padding:14px 22px;box-sizing:border-box}
+#tvMode .tv-months-h{font-size:17px;color:var(--tv-label);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;font-weight:700}
+#tvMode .tv-months{display:flex;gap:16px;align-items:flex-end;height:78px}
+#tvMode .tv-mo{flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:5px;min-width:0}
 #tvMode .tv-bar-wrap{flex:1;width:60%;max-width:80px;display:flex;align-items:flex-end}
 #tvMode .tv-bar{width:100%;border-radius:6px 6px 0 0;min-height:2px;transition:height .4s}
-#tvMode .tv-mv{font-size:clamp(12px,1.4vw,20px);font-weight:700;font-variant-numeric:tabular-nums}
-#tvMode .tv-mn{font-size:clamp(11px,1.1vw,15px);color:var(--mid);text-transform:uppercase}
-#tvMode .tv-foot{border-top:1px solid var(--line);padding-top:clamp(6px,1vh,12px);font-size:clamp(10px,1vw,14px);color:var(--dim);text-align:center}
+#tvMode .tv-mv{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+#tvMode .tv-mn{font-size:14px;color:var(--tv-label);text-transform:uppercase;font-weight:600}
+#tvMode .tv-foot{flex:0 0 24px;border-top:1px solid var(--line);padding-top:8px;font-size:14px;color:var(--dim);text-align:center}
 @media print{ #tvMode,#tvBtn{display:none !important} }
 @media print{ #fbLogin,#fbSignOut{display:none !important} }
 
