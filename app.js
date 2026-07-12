@@ -668,16 +668,16 @@ function render(){
   const wkEv=[...wkEvMap.entries()].sort((a,b)=>a[0]-b[0]).map(([,c])=>c);
   const qtyDelta=trendDelta(wkQty), evDelta=trendDelta(wkEv);
   const kp=[
-    {c:'k-crim',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
-    {c:'k-crim',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
-    {c:ppmState==='bad'?'k-amb':'k-grn',l:'PPM global (Jan–Mai)',n:ppmG||0,v:fmt(ppmG||0),u:'ppm',
+    {c:'k-crim',ic:'alertTriangle',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
+    {c:'k-crim',ic:'box',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
+    {c:ppmState==='bad'?'k-amb':'k-grn',ic:'target',l:'PPM global (Jan–Mai)',n:ppmG||0,v:fmt(ppmG||0),u:'ppm',
       s:`<span class="pill ${ppmState}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} ${ppmState==='bad'?'> cible':'≤ cible'}</span> cible ${tgt}`},
-    {c:'k-grn',l:'Sites actifs',n:sites,v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
-    {c:'k-vio',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
-    {c:'k-amb',l:'Nature dominante',n:natTop?natTop[1]:0,v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
+    {c:'k-grn',ic:'factory',l:'Sites actifs',n:sites,v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
+    {c:'k-vio',ic:'wrench',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
+    {c:'k-amb',ic:'barchart',l:'Nature dominante',n:natTop?natTop[1]:0,v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
   ];
   document.getElementById('kpis').innerHTML=kp.map(k=>`
-    <div class="kpi ${k.c}"><div class="kl">${k.l}</div>
+    <div class="kpi ${k.c}"><div class="kpi-badge">${icon(k.ic,17)}</div><div class="kl">${k.l}</div>
     <div class="kv"><span class="kv-n">${k.v}</span><span class="u">${k.u}</span></div><div class="ks">${k.s}</div>${k.extra||''}</div>`).join('');
   animateKPIs(kp);
 
@@ -2870,6 +2870,7 @@ const _savedTheme=lsGet(LS.theme,'dark');
 curTheme=_savedTheme;
 if(_savedTheme==='light') document.documentElement.setAttribute('data-theme','light');
 (function(){const b=document.getElementById('themeTgl');b.querySelector('.ic').innerHTML=icon((_savedTheme==='light')?'moon':'sun',16);b.querySelector('.tt').textContent=(_savedTheme==='light')?'Sombre':'Clair';})();
+(function(){const y=document.getElementById('lbYear'); if(y) y.textContent=new Date().getFullYear();})();
 initCharts();
 render();
 renderD8Trend();
