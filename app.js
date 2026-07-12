@@ -13,6 +13,65 @@ Chart.defaults.color = tc('--chart-tick');
 Chart.defaults.font.family = "'JetBrains Mono', monospace";
 Chart.defaults.font.size = 11;
 
+/* ---------------- ICÔNES SVG ----------------
+   Petit set d'icônes vectorielles (trait, currentColor) qui remplace les emoji
+   utilisés comme icônes de contrôle (boutons, en-têtes, statuts). Les emoji dans
+   du texte libre (phrases d'aide, toasts, corps d'e-mail texte brut) ne sont
+   pas concernés — un mailto: ne peut de toute façon pas afficher de SVG. */
+const ICONS = {
+  gear:'<circle cx="12" cy="12" r="3.3"/><line x1="19.2" y1="12" x2="21.6" y2="12"/><line x1="17.1" y1="17.1" x2="18.8" y2="18.8"/><line x1="12" y1="19.2" x2="12" y2="21.6"/><line x1="6.9" y1="17.1" x2="5.2" y2="18.8"/><line x1="4.8" y1="12" x2="2.4" y2="12"/><line x1="6.9" y1="6.9" x2="5.2" y2="5.2"/><line x1="12" y1="4.8" x2="12" y2="2.4"/><line x1="17.1" y1="6.9" x2="18.8" y2="5.2"/>',
+  wrench:'<circle cx="7" cy="7" r="3"/><line x1="9.2" y1="9.2" x2="17" y2="17"/><circle cx="18.3" cy="18.3" r="2"/>',
+  user:'<circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/>',
+  users:'<circle cx="9" cy="8" r="3"/><path d="M3.5 20c0-3.5 2.6-6 5.5-6s5.5 2.5 5.5 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.2 14.2c2.4.3 4.3 2.3 4.3 5.3"/>',
+  clipboard:'<rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><line x1="8.5" y1="10" x2="15.5" y2="10"/><line x1="8.5" y1="13.5" x2="15.5" y2="13.5"/><line x1="8.5" y1="17" x2="13" y2="17"/>',
+  ruler:'<rect x="3" y="9" width="18" height="6" rx="1.5"/><line x1="7" y1="9" x2="7" y2="12"/><line x1="11" y1="9" x2="11" y2="12"/><line x1="15" y1="9" x2="15" y2="12"/><line x1="19" y1="9" x2="19" y2="12"/>',
+  thermometer:'<path d="M12 14.5V4.5a2 2 0 0 0-4 0v10a4 4 0 1 0 4 0z"/><line x1="10" y1="7" x2="10" y2="13"/>',
+  box:'<path d="M3.5 8L12 3.5 20.5 8 12 12.5 3.5 8z"/><line x1="3.5" y1="8" x2="3.5" y2="16"/><line x1="20.5" y1="8" x2="20.5" y2="16"/><line x1="12" y1="12.5" x2="12" y2="21"/><path d="M3.5 16L12 20.5 20.5 16"/>',
+  target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.3"/>',
+  factory:'<rect x="3" y="10" width="18" height="11" rx="1"/><path d="M6 10V6l3 2V6l3 2V4h3v6"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/>',
+  barchart:'<line x1="5" y1="19" x2="5" y2="12"/><line x1="12" y1="19" x2="12" y2="7"/><line x1="19" y1="19" x2="19" y2="14"/><line x1="3" y1="19" x2="21" y2="19"/>',
+  trendup:'<polyline points="4,17 10,11 14,15 20,7"/><polyline points="14,7 20,7 20,13"/>',
+  tablet:'<rect x="5" y="2.5" width="14" height="19" rx="2.2"/><line x1="10.5" y1="18.2" x2="13.5" y2="18.2"/>',
+  sun:'<circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/>',
+  moon:'<path d="M20 14.5a8.5 8.5 0 1 1-9.5-13 7 7 0 0 0 9.5 13z"/>',
+  tv:'<rect x="2.5" y="4.5" width="19" height="13" rx="1.8"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17.5" x2="12" y2="21"/>',
+  userCircle:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.6" r="2.8"/><path d="M6.2 18.2c.9-2.7 3-4.2 5.8-4.2s4.9 1.5 5.8 4.2"/>',
+  fileText:'<path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="15.5" x2="16" y2="15.5"/><line x1="8" y1="9" x2="11" y2="9"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/>',
+  plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  close:'<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
+  shield:'<path d="M12 2.5l7.5 3v6c0 5-3.2 8.5-7.5 10-4.3-1.5-7.5-5-7.5-10v-6z"/>',
+  check:'<polyline points="4.5,12.5 9.5,17.5 19.5,6.5"/>',
+  chevronUp:'<polyline points="6,15 12,9 18,15"/>',
+  chevronDown:'<polyline points="6,9 12,15 18,9"/>',
+  chevronsUpDown:'<polyline points="7,10 12,5.5 17,10"/><polyline points="7,14 12,18.5 17,14"/>',
+  alertTriangle:'<path d="M12 3.5l9.5 16.5H2.5z"/><line x1="12" y1="9.5" x2="12" y2="14"/><line x1="12" y1="16.8" x2="12" y2="16.81"/>',
+  save:'<path d="M5 3.5h11l3.5 3.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z"/><rect x="7.5" y="4" width="7" height="5" rx="0.5"/><rect x="7" y="13" width="10" height="6.5"/>',
+  download:'<path d="M12 3.5v11.5"/><polyline points="7,10.5 12,15.5 17,10.5"/><line x1="4.5" y1="19.5" x2="19.5" y2="19.5"/>',
+  upload:'<path d="M12 20.5V9"/><polyline points="7,13.5 12,8.5 17,13.5"/><line x1="4.5" y1="4.5" x2="19.5" y2="4.5"/>',
+  undo:'<path d="M6 8H16a5 5 0 0 1 0 10h-2"/><polyline points="9,4.5 6,8 9,11.5"/>',
+  bell:'<path d="M6 10.5a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14.5 6 10.5z"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+  scissors:'<circle cx="6.5" cy="6.5" r="2.5"/><circle cx="6.5" cy="17.5" r="2.5"/><line x1="8.3" y1="8.3" x2="20" y2="19.5"/><line x1="20" y1="4.5" x2="12.5" y2="12"/><line x1="8.3" y1="15.7" x2="11" y2="13"/>',
+  trash:'<path d="M4.5 7h15"/><path d="M9.5 7V4.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7l1 12.5a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8L17.5 7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  edit:'<path d="M4 20l.9-4.2L15.8 5a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.2 19.1 4 20z"/><line x1="14" y1="6.8" x2="17.2" y2="10"/>',
+  eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  key:'<circle cx="7.5" cy="15.5" r="4"/><line x1="10.3" y1="12.7" x2="20" y2="3"/><line x1="16.5" y1="6.5" x2="19" y2="9"/><line x1="14" y1="9" x2="16" y2="11"/>',
+  gridCompact:'<rect x="3.5" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="16" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="3.5" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="16" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="3.5" y="16" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="16" width="4.5" height="4.5" rx="1"/><rect x="16" y="16" width="4.5" height="4.5" rx="1"/>',
+  gridComfort:'<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+  trenddown:'<polyline points="4,7 10,13 14,9 20,17"/><polyline points="14,17 20,17 20,11"/>',
+  refresh:'<path d="M20 11A8 8 0 1 0 18.5 16"/><polyline points="20,5 20,11 14,11"/>',
+  printer:'<rect x="4.5" y="8.5" width="15" height="7" rx="1.5"/><path d="M7 8.5V4h10v4.5"/><path d="M7 15.5V20h10v-4.5"/><line x1="16" y1="11.5" x2="16" y2="11.51"/>',
+  arrowLeft:'<polyline points="14,5 7,12 14,19"/><line x1="7" y1="12" x2="20" y2="12"/>',
+  arrowRight:'<polyline points="10,5 17,12 10,19"/><line x1="4" y1="12" x2="17" y2="12"/>',
+};
+function icon(key,size,cls){
+  size=size||16;
+  const body=ICONS[key];
+  if(!body) return '';
+  return `<svg class="ic-svg${cls?' '+cls:''}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+}
+
 /* ---------------- XLSX À LA DEMANDE ----------------
    La librairie xlsx (~700 Ko) ne sert qu'à l'import/export Excel :
    on la charge au premier besoin plutôt qu'au démarrage de l'app. */
@@ -348,7 +407,7 @@ function buildOptions(d){
   opts.filter(([v])=>String(d.fmt(v)).toLowerCase().includes(q)).slice(0,300).forEach(([v,c])=>{
     const sel=filters[d.key].has(v);
     const row=document.createElement('div'); row.className='opt'+(sel?' sel':'');
-    row.innerHTML=`<span class="ck">${sel?'✓':''}</span><span class="nm">${esc(d.fmt(v))}</span><span class="oc">${fmt(c)}</span>`;
+    row.innerHTML=`<span class="ck">${sel?icon('check',12):''}</span><span class="nm">${esc(d.fmt(v))}</span><span class="oc">${fmt(c)}</span>`;
     row.addEventListener('click',()=>{
       if(filters[d.key].has(v)) filters[d.key].delete(v); else filters[d.key].add(v);
       render(); buildOptions(d);
@@ -373,7 +432,7 @@ function renderFilterChrome(){
   DIMS.forEach(d=>{
     filters[d.key].forEach(v=>{
       const t=document.createElement('span'); t.className='tag';
-      t.innerHTML=`${esc(d.label)}: <b>${esc(d.fmt(v))}</b> <span>✕</span>`;
+      t.innerHTML=`${esc(d.label)}: <b>${esc(d.fmt(v))}</b> <span>${icon('close',12)}</span>`;
       t.querySelector('span').addEventListener('click',()=>{filters[d.key].delete(v);render();});
       sm.appendChild(t);
     });
@@ -560,9 +619,9 @@ function trendDelta(vals){
 /* badge delta — pour des défauts, hausse = mauvais (rouge), baisse = bon (vert) */
 function deltaBadge(pct, higherIsBad){
   if(pct===null||pct===undefined) return '';
-  if(pct===0) return `<span class="delta flat">— 0%</span>`;
+  if(pct===0) return `<span class="delta flat">${icon('chevronsUpDown',11)} 0%</span>`;
   const up=pct>0, bad = higherIsBad ? up : !up;
-  return `<span class="delta ${bad?'up':'down'}">${up?'▲':'▼'} ${Math.abs(pct)}%</span>`;
+  return `<span class="delta ${bad?'up':'down'}">${icon(up?'chevronUp':'chevronDown',11)} ${Math.abs(pct)}%</span>`;
 }
 
 /* KPI animés : compte de l'ancienne valeur vers la nouvelle plutôt que
@@ -612,7 +671,7 @@ function render(){
     {c:'k-crim',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
     {c:'k-crim',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
     {c:ppmState==='bad'?'k-amb':'k-grn',l:'PPM global (Jan–Mai)',n:ppmG||0,v:fmt(ppmG||0),u:'ppm',
-      s:`<span class="pill ${ppmState}">${ppmState==='bad'?'▲ > cible':'▼ ≤ cible'}</span> cible ${tgt}`},
+      s:`<span class="pill ${ppmState}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} ${ppmState==='bad'?'> cible':'≤ cible'}</span> cible ${tgt}`},
     {c:'k-grn',l:'Sites actifs',n:sites,v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
     {c:'k-vio',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
     {c:'k-amb',l:'Nature dominante',n:natTop?natTop[1]:0,v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
@@ -628,11 +687,11 @@ function render(){
   const natPct=qty&&natTop?Math.round(natTop[1]/qty*100):0;
   const srcPct=qty&&domSrc?Math.round(domSrc[1]/qty*100):0;
   document.getElementById('synthese').innerHTML=`
-    <div class="sy"><span class="sy-ic">🎯</span><div><div class="sy-k">Priorité défaut</div><div class="sy-v">${natTop?natTop[0].slice(0,26):'—'} <small>${natPct}%</small></div></div></div>
-    <div class="sy"><span class="sy-ic">🏭</span><div><div class="sy-k">Machine #1</div><div class="sy-v">${topMach?topMach[0]:'—'} <small>${topMach?fmt(topMach[1])+' pcs':''}</small></div></div></div>
+    <div class="sy"><span class="sy-ic">${icon('target',18)}</span><div><div class="sy-k">Priorité défaut</div><div class="sy-v">${natTop?natTop[0].slice(0,26):'—'} <small>${natPct}%</small></div></div></div>
+    <div class="sy"><span class="sy-ic">${icon('factory',18)}</span><div><div class="sy-k">Machine #1</div><div class="sy-v">${topMach?topMach[0]:'—'} <small>${topMach?fmt(topMach[1])+' pcs':''}</small></div></div></div>
     <div class="sy"><span class="sy-ic">${CAT_ICON[domSrc?domSrc[0]:'Outils']||'🔧'}</span><div><div class="sy-k">Source dominante</div><div class="sy-v">${domSrc?domSrc[0]:'—'} <small>${srcPct}%</small></div></div></div>
-    <div class="sy"><span class="sy-ic">📊</span><div><div class="sy-k">PPM global</div><div class="sy-v">${fmt(ppmG||0)} <span class="delta ${ppmState==='bad'?'up':'down'}">${ppmState==='bad'?'▲':'▼'} cible ${tgt}</span></div></div></div>
-    <div class="sy"><span class="sy-ic">📈</span><div><div class="sy-k">Tendance défauts</div><div class="sy-v">${qtyDelta===null?'<small>n/a</small>':deltaBadge(qtyDelta,true)+' <small>vs période préc.</small>'}</div></div></div>`;
+    <div class="sy"><span class="sy-ic">${icon('barchart',18)}</span><div><div class="sy-k">PPM global</div><div class="sy-v">${fmt(ppmG||0)} <span class="delta ${ppmState==='bad'?'up':'down'}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} cible ${tgt}</span></div></div></div>
+    <div class="sy"><span class="sy-ic">${icon('trendup',18)}</span><div><div class="sy-k">Tendance défauts</div><div class="sy-v">${qtyDelta===null?'<small>n/a</small>':deltaBadge(qtyDelta,true)+' <small>vs période préc.</small>'}</div></div></div>`;
   // instantané des chiffres clés, réutilisé par "Envoyer le rapport" (e-mail) sans tout recalculer
   _lastReport={events,qty,avg,ppmG,tgt,ppmState,natTop,natPct,topMach,domSrc,srcPct,qtyDelta,
     dmin:DATA.meta.dmin,dmax:DATA.meta.dmax,filters:DIMS.filter(d=>filters[d.key].size).map(d=>`${d.label}: ${[...filters[d.key]].map(v=>d.fmt(v)).join(', ')}`)};
@@ -825,7 +884,7 @@ function render(){
   charts.scrap.update();
   const scRsum=scR.reduce((a,v)=>a+(v||0),0), scTsum=scT.reduce((a,v)=>a+(v||0),0);
   const scPct=scTsum?Math.round((scRsum-scTsum)/scTsum*100):0;
-  document.getElementById('scrap-sub').innerHTML=`${fmt(scRsum)} pcs rebutées vs cible ${fmt(scTsum)}${useScT?' <span style="color:var(--violet)">(perso)</span>':''} · <span class="delta ${scPct<=0?'down':'up'}">${scPct<=0?'▼':'▲'} ${Math.abs(scPct)}% ${scPct<=0?'sous cible ✓':'au-dessus ⚠'}</span>`;
+  document.getElementById('scrap-sub').innerHTML=`${fmt(scRsum)} pcs rebutées vs cible ${fmt(scTsum)}${useScT?' <span style="color:var(--violet)">(perso)</span>':''} · <span class="delta ${scPct<=0?'down':'up'}">${icon(scPct<=0?'chevronDown':'chevronUp',11)} ${Math.abs(scPct)}% ${scPct<=0?'sous cible':'au-dessus'}</span>`;
 
   // défauts par shift (réclamations avec shift renseigné)
   const shRows=fr.filter(r=>r.sh && !BAD_VALS.includes(r.sh));
@@ -955,8 +1014,8 @@ function renderCompare(fr){
       ${ppmMetric}
     </div>
     <div class="cmp-movers">
-      <div class="cmp-mv-col"><div class="cmp-mv-h" style="color:var(--crimson)">▲ Plus fortes hausses</div>${up.length?up.map(m=>moverRow(m,true)).join(''):'<div class="cmp-empty">Aucune hausse</div>'}</div>
-      <div class="cmp-mv-col"><div class="cmp-mv-h" style="color:var(--green)">▼ Plus fortes baisses</div>${down.length?down.map(m=>moverRow(m,false)).join(''):'<div class="cmp-empty">Aucune baisse</div>'}</div>
+      <div class="cmp-mv-col"><div class="cmp-mv-h" style="color:var(--crimson)">${icon('chevronUp',13)} Plus fortes hausses</div>${up.length?up.map(m=>moverRow(m,true)).join(''):'<div class="cmp-empty">Aucune hausse</div>'}</div>
+      <div class="cmp-mv-col"><div class="cmp-mv-h" style="color:var(--green)">${icon('chevronDown',13)} Plus fortes baisses</div>${down.length?down.map(m=>moverRow(m,false)).join(''):'<div class="cmp-empty">Aucune baisse</div>'}</div>
     </div>`;
 }
 
@@ -985,7 +1044,7 @@ function renderTable(fr){
   const q=(document.getElementById('tsearch').value||'').toLowerCase();
   tableRows=fr.filter(r=>!q||COLS.some(c=>String(r[c.k]==null?'':r[c.k]).toLowerCase().includes(q)));
   tableRows.sort((a,b)=>{let x=a[sortK],y=b[sortK];if(typeof x==='string'){x=x.toLowerCase();y=String(y==null?'':y).toLowerCase();}return ((x>y?1:x<y?-1:0))*sortDir;});
-  document.getElementById('thead').innerHTML=COLS.map(c=>`<th data-k="${c.k}">${c.t} <span class="ar">${sortK===c.k?(sortDir>0?'▲':'▼'):'⇅'}</span></th>`).join('');
+  document.getElementById('thead').innerHTML=COLS.map(c=>`<th data-k="${c.k}">${c.t} <span class="ar">${sortK===c.k?icon(sortDir>0?'chevronUp':'chevronDown',11):icon('chevronsUpDown',11,'ar-idle')}</span></th>`).join('');
   const slice=tableRows.slice(0,400);
   document.getElementById('tbody').innerHTML=slice.map((r,ri)=>'<tr data-ri="'+ri+'">'+COLS.map(c=>{
     if(c.qty)return `<td class="qty">${fmt(r.q)}</td>`;
@@ -1014,7 +1073,7 @@ document.getElementById('csvBtn').addEventListener('click',()=>{
 let toastT;
 function toast(msg,err){
   const t=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;
-  t.classList.toggle('err',!!err);t.querySelector('.ti').textContent=err?'!':'✓';
+  t.classList.toggle('err',!!err);t.querySelector('.ti').innerHTML=err?icon('alertTriangle',15):icon('check',15);
   t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),3200);
 }
 
@@ -1322,11 +1381,11 @@ function update8DLauncherCx(fr){
 }
 
 /* --- rendu des listes dynamiques --- */
-function rowD1(m){return `<tr><td><input class="r-role" value="${esc(m.role)}"></td><td><input class="r-nom" value="${esc(m.nom||'')}"></td><td><input class="r-fonction" value="${esc(m.fonction||'')}"></td><td><button class="del" data-del>✕</button></td></tr>`;}
+function rowD1(m){return `<tr><td><input class="r-role" value="${esc(m.role)}"></td><td><input class="r-nom" value="${esc(m.nom||'')}"></td><td><input class="r-fonction" value="${esc(m.fonction||'')}"></td><td><button class="del" data-del>${icon('close',12)}</button></td></tr>`;}
 function renderD1(list){document.getElementById('d1Rows').innerHTML=(list&&list.length?list:D1_ROLES.map(r=>({role:r}))).map(rowD1).join('');}
-function rowAction(a){return `<tr><td><textarea class="a-action">${esc(a.action||'')}</textarea></td><td><input class="a-resp" value="${esc(a.resp||'')}"></td><td><input class="a-delai" value="${esc(a.delai||'')}"></td><td><select class="a-statut statpill">${STAT.map(s=>`<option${s===(a.statut||'À faire')?' selected':''}>${s}</option>`).join('')}</select></td><td><button class="del" data-del>✕</button></td></tr>`;}
+function rowAction(a){return `<tr><td><textarea class="a-action">${esc(a.action||'')}</textarea></td><td><input class="a-resp" value="${esc(a.resp||'')}"></td><td><input class="a-delai" value="${esc(a.delai||'')}"></td><td><select class="a-statut statpill">${STAT.map(s=>`<option${s===(a.statut||'À faire')?' selected':''}>${s}</option>`).join('')}</select></td><td><button class="del" data-del>${icon('close',12)}</button></td></tr>`;}
 function renderAction(list,id){document.getElementById(id).innerHTML=(list||[]).map(rowAction).join('');}
-function causeRow(c){return `<div class="cause"><input value="${esc(c)}"><button class="del" data-del>✕</button></div>`;}
+function causeRow(c){return `<div class="cause"><input value="${esc(c)}"><button class="del" data-del>${icon('close',12)}</button></div>`;}
 function renderFish(causes){
   document.getElementById('fishGrid').innerHTML=M_ORDER.map(k=>`<div class="mcard" data-m="${k}"><h5><span class="ic"></span>${M_KEYS[k]}</h5><div class="m-list">${(causes[k]||[]).map(causeRow).join('')}</div><button class="addc" data-addc>+ cause</button></div>`).join('');
   updateFishWheelCounts();
@@ -1486,7 +1545,7 @@ wireWheelFilter('classWheel','data-pc','pclass');
 wireWheelFilter('projWheel','data-pr','project');
 wireWheelFilter('siteWheel','data-si','site');
 function renderWhy(arr){
-  document.getElementById('whyChain').innerHTML=[1,2,3,4,5].map((n,i)=>`<div class="why"><span class="lvl">Pourquoi ${n}</span><input data-why value="${esc(arr&&arr[i]||'')}">${i<4?'<span class="arr">↓</span>':''}</div>`).join('');
+  document.getElementById('whyChain').innerHTML=[1,2,3,4,5].map((n,i)=>`<div class="why"><span class="lvl">Pourquoi ${n}</span><input data-why value="${esc(arr&&arr[i]||'')}">${i<4?`<span class="arr">${icon('chevronDown',13)}</span>`:''}</div>`).join('');
 }
 function renderD7(checked){
   document.getElementById('d7Chk').innerHTML=D7_ITEMS.map((t,i)=>`<label class="chk${checked&&checked[i]?' on':''}"><input type="checkbox" data-chk ${checked&&checked[i]?'checked':''}><span>${esc(t)}</span></label>`).join('');
@@ -1709,34 +1768,34 @@ function mgOps(){
     <td>${esc(o.name)}</td>
     <td><input type="date" data-ophire="${i}" value="${esc(o.hire||'')}"></td>
     <td class="sen">${seniorityLabel(o.hire)}</td>
-    <td><button class="del" data-opdel="${i}">✕</button></td></tr>`).join('');
+    <td><button class="del" data-opdel="${i}">${icon('close',12)}</button></td></tr>`).join('');
   return `
-  <div class="mg-h">👷 Opérateurs &amp; ancienneté</div>
+  <div class="mg-h">${icon('user',16)} Opérateurs &amp; ancienneté</div>
   <div class="mg-p">Renseigne la <b>date d'embauche</b> : l'ancienneté en mois est calculée automatiquement par rapport à aujourd'hui. Ces opérateurs alimentent le menu déroulant « Opérateur » du formulaire.</div>
   <div class="mg-add">
     <div class="field"><label>Nom de l'opérateur</label><input id="op-name" placeholder="ex. EL AMRANI Youssef"></div>
     <div class="field" style="max-width:200px"><label>Date d'embauche</label><input type="date" id="op-hire"></div>
-    <button class="mg-addbtn" id="op-add">➕ Ajouter</button>
+    <button class="mg-addbtn" id="op-add">${icon('plus',13)} Ajouter</button>
     <button class="d8-tbtn" id="op-import-btn" style="align-self:flex-end;height:39px">⬆ Importer Excel</button>
     <input type="file" id="op-import-file" accept=".xlsx,.xls,.csv" style="display:none">
     <button class="d8-tbtn" id="op-export-btn" style="align-self:flex-end;height:39px">⬇ Exporter Excel</button>
   </div>
-  <div class="mg-imp-hint">📥 Import Excel / CSV — colonne <b>Nom</b> (ou 1ʳᵉ colonne) + colonne <b>Date d'embauche</b> optionnelle (formats JJ/MM/AAAA ou AAAA-MM-JJ).</div>
+  <div class="mg-imp-hint">${icon('download',13)} Import Excel / CSV — colonne <b>Nom</b> (ou 1ʳᵉ colonne) + colonne <b>Date d'embauche</b> optionnelle (formats JJ/MM/AAAA ou AAAA-MM-JJ).</div>
   ${OPS.length?`<table class="d8-tbl"><thead><tr><th>Nom</th><th>Date d'embauche</th><th>Ancienneté</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="mg-empty">Aucun opérateur. Ajoute-en un ou importe un fichier Excel.</div>`}`;
 }
 function mgSups(){
-  const pills=SUPS.map((s,i)=>`<span class="mg-pill">${esc(s)} <button data-supdel="${i}">✕</button></span>`).join('');
+  const pills=SUPS.map((s,i)=>`<span class="mg-pill">${esc(s)} <button data-supdel="${i}">${icon('close',12)}</button></span>`).join('');
   return `
-  <div class="mg-h">🧑‍🏭 Superviseurs</div>
+  <div class="mg-h">${icon('users',16)} Superviseurs</div>
   <div class="mg-p">Liste des superviseurs proposés dans le formulaire (menu déroulant). Initialisée depuis l'historique — ajoute, importe ou retire des noms.</div>
   <div class="mg-add">
     <div class="field"><label>Nouveau superviseur</label><input id="sup-name" placeholder="ex. BENNANI"></div>
-    <button class="mg-addbtn" id="sup-add">➕ Ajouter</button>
+    <button class="mg-addbtn" id="sup-add">${icon('plus',13)} Ajouter</button>
     <button class="d8-tbtn" id="sup-import-btn" style="align-self:flex-end;height:39px">⬆ Importer Excel</button>
     <input type="file" id="sup-import-file" accept=".xlsx,.xls,.csv" style="display:none">
     <button class="d8-tbtn" id="sup-export-btn" style="align-self:flex-end;height:39px">⬇ Exporter Excel</button>
   </div>
-  <div class="mg-imp-hint">📥 Import Excel / CSV — colonne <b>Nom</b> des superviseurs (ou 1ʳᵉ colonne).</div>
+  <div class="mg-imp-hint">${icon('download',13)} Import Excel / CSV — colonne <b>Nom</b> des superviseurs (ou 1ʳᵉ colonne).</div>
   ${SUPS.length?`<div class="mg-pills">${pills}</div>`:`<div class="mg-empty">Aucun superviseur. Ajoute-en un ou importe un fichier Excel.</div>`}`;
 }
 function mgProd(){
@@ -1749,15 +1808,15 @@ function mgProd(){
     const ok=ppm!=null&&ppm<=tgt;
     return `<tr><td>${k}</td><td class="sen">${fmt(prod)}</td><td>${def==null?'<span style="color:var(--mid)">—</span>':fmt(def)}</td>
       <td class="sen" style="color:${ppm==null?'var(--mid)':ok?'var(--green)':'var(--crimson)'}">${ppm==null?'—':fmt(ppm)}</td>
-      <td>${ppm==null?'<span style="color:var(--mid)">pas de défaut ces jours-là</span>':`<span class="delta ${ok?'down':'up'}">${ok?'▼':'▲'} ${ok?'≤':'>'} ${tgt}</span>`}</td></tr>`;
+      <td>${ppm==null?'<span style="color:var(--mid)">pas de défaut ces jours-là</span>':`<span class="delta ${ok?'down':'up'}">${icon(ok?'chevronDown':'chevronUp',11)} ${ok?'≤':'>'} ${tgt}</span>`}</td></tr>`;
   }).join('');
   const daily=[...PROD].map((p,i)=>({p,i})).sort((a,b)=>String(b.p.d||'').localeCompare(String(a.p.d||''))).map(({p,i})=>
-    `<tr><td>${esc(p.d||'')}</td><td class="sen">${fmt(+p.q||0)}</td><td><button class="del" data-proddel="${i}">✕</button></td></tr>`).join('');
+    `<tr><td>${esc(p.d||'')}</td><td class="sen">${fmt(+p.q||0)}</td><td><button class="del" data-proddel="${i}">${icon('close',12)}</button></td></tr>`).join('');
   const pmTot=Object.values(PRODM).reduce((a,b)=>a+(+b||0),0);
   const prodMachRows=Object.entries(PRODM).sort((a,b)=>b[1]-a[1]).map(([m,v])=>
     `<tr><td>${esc(m)}</td><td class="sen">${fmt(v)}</td><td>${pmTot?(v/pmTot*100).toFixed(1):0}%</td></tr>`).join('');
   return `
-  <div class="mg-h">🎯 Cibles &amp; objectifs</div>
+  <div class="mg-h">${icon('target',16)} Cibles &amp; objectifs</div>
   <div class="mg-p">Modifie ici les cibles utilisées dans tout le tableau de bord.</div>
   <div class="mg-add">
     <div class="field" style="max-width:170px"><label>Cible PPM</label><input type="number" id="tgt-ppm" min="1" step="1" value="${DATA.ppm.ppmTarget}"></div>
@@ -1768,26 +1827,26 @@ function mgProd(){
       <option value="2"${DRIFT_SIG==2?' selected':''}>2 σ — standard SPC</option>
       <option value="3"${DRIFT_SIG==3?' selected':''}>3 σ — strict (peu d'alertes)</option>
     </select></div>
-    <button class="mg-addbtn" id="tgt-save">💾 Enregistrer les cibles</button>
-    <button class="d8-tbtn" id="tgt-reset" style="align-self:flex-end;height:39px">↺ Scrap par défaut</button>
+    <button class="mg-addbtn" id="tgt-save">${icon('save',13)} Enregistrer les cibles</button>
+    <button class="d8-tbtn" id="tgt-reset" style="align-self:flex-end;height:39px">${icon('undo',13)} Scrap par défaut</button>
   </div>
   <div class="mg-imp-hint">La <b>cible PPM</b> pilote le graphique PPM, la synthèse, les KPI et le tableau ci-dessous. La <b>cible scrap</b> (laisser vide = valeurs d'origine File 2) pilote la ligne cible du graphique « Scrap mensuel vs cible ». Le <b>seuil de dérive (σ)</b> calibre la sensibilité de l'alerte SPC du Pilotage Qualité : <b>1 σ</b> = détection précoce (réaction rapide), <b>2-3 σ</b> = moins de fausses alertes (dérives confirmées).</div>
-  <div class="mg-h" style="margin-top:22px">🏭 Production journalière &amp; PPM mensuel</div>
+  <div class="mg-h" style="margin-top:22px">${icon('factory',16)} Production journalière &amp; PPM mensuel</div>
   <div class="mg-p">Saisis la <b>production de chaque jour</b> (pièces produites). Le <b>PPM mensuel</b> est calculé automatiquement : <b>PPM = défauts ÷ production × 1 000 000</b>, comparé à la cible (<b>${tgt}</b>). La courbe « PPM calculé » s'ajoute au graphique « PPM mensuel vs cible » du tableau de bord.</div>
   <div class="mg-add">
     <div class="field" style="max-width:190px"><label>Date</label><input type="date" id="prod-date"></div>
     <div class="field"><label>Production du jour (pcs)</label><input type="number" id="prod-qty" min="1" step="1" placeholder="ex. 1 850 000"></div>
-    <button class="mg-addbtn" id="prod-add">➕ Ajouter</button>
+    <button class="mg-addbtn" id="prod-add">${icon('plus',13)} Ajouter</button>
     <button class="d8-tbtn" id="prod-import-btn" style="align-self:flex-end;height:39px">⬆ Importer Excel</button>
     <input type="file" id="prod-import-file" accept=".xlsx,.xls,.csv" style="display:none">
     <button class="d8-tbtn" id="prod-export-btn" style="align-self:flex-end;height:39px">⬇ Exporter (CSV)</button>
   </div>
-  <div class="mg-imp-hint">📥 Import Excel / CSV — soit <b>Date + Production</b> (par jour), soit un <b>export coupe</b> (colonnes <b>Work Station</b>, <b>Good Parts</b>/<b>Quantity</b>, <b>Actual End Date</b>) : la production est alors agrégée automatiquement <b>par jour</b> (pour le PPM) et <b>par machine</b>.</div>
+  <div class="mg-imp-hint">${icon('download',13)} Import Excel / CSV — soit <b>Date + Production</b> (par jour), soit un <b>export coupe</b> (colonnes <b>Work Station</b>, <b>Good Parts</b>/<b>Quantity</b>, <b>Actual End Date</b>) : la production est alors agrégée automatiquement <b>par jour</b> (pour le PPM) et <b>par machine</b>.</div>
   <div class="mg-h" style="font-size:14px;margin-top:4px">PPM mensuel calculé vs cible (${tgt})</div>
   ${months.length?`<table class="d8-tbl"><thead><tr><th>Mois</th><th>Production</th><th>Défauts</th><th>PPM calculé</th><th>vs cible</th></tr></thead><tbody>${rowsM}</tbody></table>`:`<div class="mg-empty">Aucune production saisie. Ajoute des jours ou importe un fichier Excel pour calculer le PPM.</div>`}
-  ${Object.keys(PRODM).length?`<div class="mg-h" style="font-size:14px;margin-top:20px">🏭 Production par machine <span style="font-weight:500;color:var(--mid)">— dernier import · ${Object.keys(PRODM).length} machines · ${fmt(pmTot)} pcs</span></div>
+  ${Object.keys(PRODM).length?`<div class="mg-h" style="font-size:14px;margin-top:20px">${icon('factory',16)} Production par machine <span style="font-weight:500;color:var(--mid)">— dernier import · ${Object.keys(PRODM).length} machines · ${fmt(pmTot)} pcs</span></div>
     <div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px"><table class="d8-tbl" style="margin:0"><thead><tr><th>Machine</th><th>Production (pcs)</th><th>Part</th></tr></thead><tbody>${prodMachRows}</tbody></table></div>
-    <button class="d8-tbtn" id="prodm-clear" style="margin-top:9px">✕ Effacer la production par machine</button>`:''}
+    <button class="d8-tbtn" id="prodm-clear" style="margin-top:9px">${icon('trash',13)} Effacer la production par machine</button>`:''}
   ${PROD.length?`<div class="mg-h" style="font-size:14px;margin-top:18px">Saisies journalières (${PROD.length})</div>
     <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px"><table class="d8-tbl" style="margin:0"><thead><tr><th>Date</th><th>Production (pcs)</th><th></th></tr></thead><tbody>${daily}</tbody></table></div>`:''}`;
 }
@@ -1799,7 +1858,7 @@ function mgRefs(){
     const pills=items.map(n=>{
       const isAdded=addedSet.has(n.toLowerCase());
       const sel=`<select class="catsel" data-natcat="${esc(n)}">${CATS.map(c=>`<option${c===cat?' selected':''}>${c}</option>`).join('')}</select>`;
-      return `<span class="mg-pill"><span class="np-n">${esc(n)}</span>${sel}${isAdded?`<button data-natdel-name="${esc(n)}">✕</button>`:''}</span>`;
+      return `<span class="mg-pill"><span class="np-n">${esc(n)}</span>${sel}${isAdded?`<button data-natdel-name="${esc(n)}">${icon('close',12)}</button>`:''}</span>`;
     }).join('');
     return `<div class="mg-cat">
       <div class="mg-cat-h" style="color:${CAT_COL[cat]}">${CAT_ICON[cat]} ${cat} <span class="mg-cat-n">${items.length}</span></div>
@@ -1807,39 +1866,39 @@ function mgRefs(){
     </div>`;
   }).join('');
   const famBase=seedDistinct('fa',false).length;
-  const famP=FAM_EXTRA.length?`<div class="mg-pills">${FAM_EXTRA.map((s,i)=>`<span class="mg-pill">${esc(s)} <button data-famdel="${i}">✕</button></span>`).join('')}</div>`:`<div class="mg-empty">Aucune famille ajoutée — les ${famBase} familles d'origine restent disponibles.</div>`;
+  const famP=FAM_EXTRA.length?`<div class="mg-pills">${FAM_EXTRA.map((s,i)=>`<span class="mg-pill">${esc(s)} <button data-famdel="${i}">${icon('close',12)}</button></span>`).join('')}</div>`:`<div class="mg-empty">Aucune famille ajoutée — les ${famBase} familles d'origine restent disponibles.</div>`;
   return `
-  <div class="mg-h">📚 Référentiels — Défauts par source &amp; Familles</div>
+  <div class="mg-h">${icon('clipboard',16)} Référentiels — Défauts par source &amp; Familles</div>
   <div class="mg-p">Les natures de défaut sont réparties par <b>source</b> : ${CAT_ICON.Outils} Outils, ${CAT_ICON.Machine} Machine, ${CAT_ICON['Opérateur']} Opérateur. Change la source d'une nature via son menu déroulant — cette classification pilote le formulaire (choix de la source avant la nature), le graphique de répartition et les filtres.</div>
   <div class="mg-add" style="margin-bottom:6px">
     <button class="d8-tbtn" id="ref-import-btn">⬆ Importer Excel</button>
     <input type="file" id="ref-import-file" accept=".xlsx,.xls,.csv" style="display:none">
     <button class="d8-tbtn" id="ref-export-btn">⬇ Exporter Excel</button>
   </div>
-  <div class="mg-imp-hint">📥 Import Excel — feuille <b>Natures</b> (colonnes <b>Nature</b> + <b>Source</b>) et/ou feuille <b>Familles</b> (colonne <b>Famille</b>). L'export produit un .xlsx avec ces deux feuilles.</div>
+  <div class="mg-imp-hint">${icon('download',13)} Import Excel — feuille <b>Natures</b> (colonnes <b>Nature</b> + <b>Source</b>) et/ou feuille <b>Familles</b> (colonne <b>Famille</b>). L'export produit un .xlsx avec ces deux feuilles.</div>
   <div class="mg-add" style="margin-bottom:6px;margin-top:12px">
     <button class="d8-tbtn" id="mt-import-btn">⬆ Importer Type de machine</button>
     <input type="file" id="mt-import-file" accept=".xlsx,.xls,.csv" style="display:none">
-    <button class="d8-tbtn" id="mt-clear-btn">🗑 Réinitialiser le mapping</button>
+    <button class="d8-tbtn" id="mt-clear-btn">${icon('trash',13)} Réinitialiser le mapping</button>
     <span style="font-size:12px;color:#8190a8;align-self:center" id="mt-count"></span>
   </div>
-  <div class="mg-imp-hint">🛠️ Import Excel / CSV — colonnes <b>Machine</b> + <b>Type de machine</b> (ex. M735 → CC64). Le vrai type remplace alors le préfixe (M, T, A…) dans le graphique « Par type de machine », les filtres et le heatmap.</div>
+  <div class="mg-imp-hint">${icon('wrench',13)} Import Excel / CSV — colonnes <b>Machine</b> + <b>Type de machine</b> (ex. M735 → CC64). Le vrai type remplace alors le préfixe (M, T, A…) dans le graphique « Par type de machine », les filtres et le heatmap.</div>
   <div class="mg-add">
     <div class="field"><label>Nouvelle nature de défaut</label><input id="nat-name" placeholder="ex. Sertissage décentré"></div>
     <div class="field" style="max-width:180px"><label>Source</label><select id="nat-cat">${CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
-    <button class="mg-addbtn" id="nat-add">➕ Ajouter</button>
+    <button class="mg-addbtn" id="nat-add">${icon('plus',13)} Ajouter</button>
   </div>
   ${groups}
   <div class="mg-h" style="margin-top:26px">Familles produit</div>
   <div class="mg-add">
     <div class="field"><label>Nouvelle famille produit</label><input id="fam-name" placeholder="ex. K9 BEV"></div>
-    <button class="mg-addbtn" id="fam-add">➕ Ajouter</button>
+    <button class="mg-addbtn" id="fam-add">${icon('plus',13)} Ajouter</button>
   </div>
   ${famP}`;
 }
 function mgData(){
   return `
-  <div class="mg-h">💾 Données &amp; sauvegarde</div>
+  <div class="mg-h">${icon('save',16)} Données &amp; sauvegarde</div>
   <div class="mg-p">La base d'origine (763 lignes des 2 fichiers Excel) est intégrée à l'application. Tes ajouts (réclamations, opérateurs, superviseurs, référentiels) sont stockés dans le navigateur. <b>Exporte-les en JSON</b> pour les archiver ou les transférer vers un autre poste.</div>
   <div class="mg-stat">
     <div class="s"><div class="v">${fmt(_curClaims())}</div><div class="k">Réclamations ajoutées</div></div>
@@ -1854,12 +1913,12 @@ function mgData(){
     <button class="d8-tbtn" id="data-xlsx-import-btn">⬆ Importer des défauts (Excel)</button>
     <input type="file" id="data-xlsx-import-file" accept=".xlsx,.xls,.csv" style="display:none">
   </div>
-  <div class="mg-imp-hint" style="margin-bottom:16px">📥 Import Excel des défauts — colonnes <b>Date</b> + <b>Quantité</b> obligatoires ; Site, Client, Équipe, Machine, Fournisseur, Nom d'outil, Connexion, Nature, Opérateur, Superviseur, Shift, Famille optionnelles. L'export contient l'intégralité du registre.</div>
+  <div class="mg-imp-hint" style="margin-bottom:16px">${icon('download',13)} Import Excel des défauts — colonnes <b>Date</b> + <b>Quantité</b> obligatoires ; Site, Client, Équipe, Machine, Fournisseur, Nom d'outil, Connexion, Nature, Opérateur, Superviseur, Shift, Famille optionnelles. L'export contient l'intégralité du registre.</div>
   <div class="mg-h" style="font-size:14px">Sauvegarde complète (JSON)</div>
   <div class="mg-data-actions">
     <button class="d8-tbtn" id="mgExport2">⬇ Exporter la sauvegarde (JSON)</button>
     <button class="d8-tbtn" id="mgImportBtn2">⬆ Importer une sauvegarde</button>
-    <button class="d8-tbtn warn" id="mgReset2">♻ Réinitialiser (effacer mes ajouts)</button>
+    <button class="d8-tbtn warn" id="mgReset2">${icon('undo',13)} Réinitialiser (effacer mes ajouts)</button>
   </div>
   <div class="modal-note" style="margin-top:16px">⚠️ <b>GitHub Pages</b> : le site est statique et le stockage est <b>propre à chaque navigateur</b>. Pour partager les données entre postes, exporte le JSON et importe-le ailleurs — ou branche une base <b>Firebase</b> pour une synchro multi-utilisateurs en temps réel.</div>`;
 }
@@ -1868,11 +1927,11 @@ function mgAudit(){
   const q=(_auditQ||'').toLowerCase();
   const rows=q?log.filter(e=>(e.who+' '+e.label+' '+(e.extra||'')).toLowerCase().includes(q)):log;
   return `
-  <div class="mg-h">🕓 Journal d'audit</div>
+  <div class="mg-h">${icon('clipboard',16)} Journal d'audit</div>
   <div class="mg-p">Trace qui a modifié quelle section de l'application, et quand — réclamations, référentiels, cibles, permissions… Synchronisé en temps réel entre les postes connectés (${fmt(log.length)} entrée(s), 500 max conservées).</div>
   <div class="mg-data-actions" style="margin-bottom:12px">
     <input id="audit-q" class="tsearch" placeholder="Filtrer (utilisateur, section…)" value="${esc(_auditQ||'')}">
-    ${window._isAdmin?'<button class="d8-tbtn warn" id="audit-clear">🗑 Vider le journal</button>':''}
+    ${window._isAdmin?`<button class="d8-tbtn warn" id="audit-clear">${icon('trash',13)} Vider le journal</button>`:''}
   </div>
   ${rows.length?`<table class="d8-tbl"><thead><tr><th>Quand</th><th>Qui</th><th>Section</th></tr></thead><tbody>
     ${rows.slice(0,300).map(e=>`<tr><td class="mono">${esc(new Date(e.ts).toLocaleString('fr-FR'))}</td><td>${esc(e.who)}</td><td>${esc(e.label)}${e.extra?' — '+esc(e.extra):''}</td></tr>`).join('')}
@@ -2200,8 +2259,8 @@ function rowDlSrc(f){
 }
 function rowBadge(r){
   return r._u
-    ? '<span class="rd-badge u">✍ Saisie manuelle</span>'
-    : '<span class="rd-badge">📄 Registre importé</span>';
+    ? `<span class="rd-badge u">${icon('edit',12)} Saisie manuelle</span>`
+    : `<span class="rd-badge">${icon('fileText',12)} Registre importé</span>`;
 }
 function rowFmtVal(r,c){ const raw=r[c.k]; return (raw==null||raw==='')?'—':(c.f?c.f(raw):raw); }
 
@@ -2253,7 +2312,7 @@ function openRowCard(row,mode){
   rowBk.classList.add('show');
 }
 function renderRowView(r){
-  document.getElementById('rowTitle').textContent='👁 Détail de la ligne';
+  document.getElementById('rowTitle').innerHTML=`${icon('eye',16)} Détail de la ligne`;
   const cells=COLS.map(c=>{
     let v=esc(rowFmtVal(r,c));
     if(c.chip) v=`<span class="chip ${chipCls(r.pr)}">${v}</span>`;
@@ -2266,12 +2325,12 @@ function renderRowView(r){
      <div class="rd-grid">${cells}</div>`;
   document.getElementById('rowFoot').innerHTML=
     `<button class="btn-ghost" id="rc-close">Fermer</button>
-     <button class="btn-go" id="rc-toedit">✏️ Modifier cette ligne</button>`;
+     <button class="btn-go" id="rc-toedit">${icon('edit',13)} Modifier cette ligne</button>`;
   document.getElementById('rc-close').onclick=closeRowCard;
   document.getElementById('rc-toedit').onclick=()=>renderRowEdit(r);
 }
 function renderRowEdit(r){
-  document.getElementById('rowTitle').textContent='✏️ Modifier la ligne';
+  document.getElementById('rowTitle').innerHTML=`${icon('edit',16)} Modifier la ligne`;
   const dls=[];
   const fields=ROW_EDIT_FIELDS.map(f=>{
     let dlAttr='';
@@ -2291,8 +2350,8 @@ function renderRowEdit(r){
      <div class="fgrid">${fields}</div>${dls.join('')}`;
   document.getElementById('rowFoot').innerHTML=
     `<button class="btn-ghost" id="re-cancel">Annuler</button>
-     <button class="btn-ghost" id="re-view">👁 Voir la fiche</button>
-     <button class="btn-go" id="re-save">💾 Enregistrer les modifications</button>`;
+     <button class="btn-ghost" id="re-view">${icon('eye',13)} Voir la fiche</button>
+     <button class="btn-go" id="re-save">${icon('save',13)} Enregistrer les modifications</button>`;
   document.getElementById('re-cancel').onclick=closeRowCard;
   document.getElementById('re-view').onclick=()=>renderRowView(r);
   document.getElementById('re-save').onclick=()=>saveRowEdit(r);
@@ -2548,7 +2607,7 @@ function applyTheme(t){
   if(t==='light') document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   const b=document.getElementById('themeTgl');
-  b.querySelector('.ic').textContent = (t==='light')?'🌙':'☀️';
+  b.querySelector('.ic').innerHTML = icon((t==='light')?'moon':'sun',16);
   b.querySelector('.tt').textContent = (t==='light')?'Sombre':'Clair';
   lsSet(LS.theme,t);
   // repaint charts (grid, ticks, borders, tooltips follow the new palette)
@@ -2561,7 +2620,7 @@ function applyDensity(d){
   if(d==='compact') document.documentElement.setAttribute('data-density','compact');
   else document.documentElement.removeAttribute('data-density');
   const b=document.getElementById('densTgl');
-  if(b){ b.querySelector('.ic').textContent=(d==='compact')?'▦':'▤'; b.querySelector('.tt').textContent=(d==='compact')?'Compact':'Confort'; }
+  if(b){ b.querySelector('.ic').innerHTML=icon((d==='compact')?'gridCompact':'gridComfort',16); b.querySelector('.tt').textContent=(d==='compact')?'Compact':'Confort'; }
   try{ localStorage.setItem('lwsq_density_v1', d); }catch(e){}
   if(window._booted){ try{ Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}}); }catch(e){} }
 }
@@ -2648,7 +2707,7 @@ function applyTabletMode(on){
   let helpEl=null;
   function openHelp(){
     if(!helpEl){ helpEl=document.createElement('div'); helpEl.id='pwaHelp';
-      helpEl.innerHTML='<div class="ph-card"><div class="ph-h">📲 Installer Quality Cockpit</div><div class="ph-b"></div><button class="ph-x">J’ai compris</button></div>';
+      helpEl.innerHTML=`<div class="ph-card"><div class="ph-h">${icon('download',16)} Installer Quality Cockpit</div><div class="ph-b"></div><button class="ph-x">J’ai compris</button></div>`;
       document.body.appendChild(helpEl);
       helpEl.addEventListener('click',e=>{ if(e.target===helpEl||e.target.classList.contains('ph-x')) closeHelp(); });
     }
@@ -2744,20 +2803,20 @@ document.querySelectorAll('.heat-tab').forEach(t=>t.addEventListener('click',()=
 
   function buildCommands(){
     const cmds=[
-      {icon:'➕',label:'Nouvelle réclamation',run:()=>clickBtn('openAdd')},
-      {icon:'⚙️',label:'Gestion (référentiels, imports, opérateurs…)',run:()=>clickBtn('openMg')},
-      {icon:'📄',label:'Rapport imprimable',run:()=>clickBtn('printReport')},
-      {icon:'📧',label:'Envoyer le rapport par e-mail',run:()=>clickBtn('emailReport')},
-      {icon:'📊',label:'Pareto NOK',run:()=>clickBtn('nokBtn3')},
-      {icon:'⬇️',label:'Exporter les défauts (Excel)',run:()=>exportClaimsXlsx()},
-      {icon:'✕',label:'Réinitialiser tous les filtres',run:()=>clickBtn('resetBtn')},
-      {icon: curTheme==='light'?'🌙':'☀️',label:'Basculer le thème '+(curTheme==='light'?'sombre':'clair'),run:()=>clickBtn('themeTgl')},
-      {icon:'▤',label:'Basculer la densité d’affichage',run:()=>clickBtn('densTgl')},
-      {icon:'📺',label:'Mode télévision (plein écran)',run:()=>clickBtn('tvBtn')},
+      {icon:icon('plus',16),label:'Nouvelle réclamation',run:()=>clickBtn('openAdd')},
+      {icon:icon('gear',16),label:'Gestion (référentiels, imports, opérateurs…)',run:()=>clickBtn('openMg')},
+      {icon:icon('fileText',16),label:'Rapport imprimable',run:()=>clickBtn('printReport')},
+      {icon:icon('mail',16),label:'Envoyer le rapport par e-mail',run:()=>clickBtn('emailReport')},
+      {icon:icon('barchart',16),label:'Pareto NOK',run:()=>clickBtn('nokBtn3')},
+      {icon:icon('download',16),label:'Exporter les défauts (Excel)',run:()=>exportClaimsXlsx()},
+      {icon:icon('close',16),label:'Réinitialiser tous les filtres',run:()=>clickBtn('resetBtn')},
+      {icon: icon(curTheme==='light'?'moon':'sun',16),label:'Basculer le thème '+(curTheme==='light'?'sombre':'clair'),run:()=>clickBtn('themeTgl')},
+      {icon:icon('gridComfort',16),label:'Basculer la densité d’affichage',run:()=>clickBtn('densTgl')},
+      {icon:icon('tv',16),label:'Mode télévision (plein écran)',run:()=>clickBtn('tvBtn')},
     ];
-    if(typeof _tabletMode!=='undefined') cmds.push({icon:'📱',label:'Basculer le mode tablette',run:()=>clickBtn('tabletTgl')});
-    if(visible('open8D')) cmds.push({icon:'📋',label:'Atelier 8D — problème prioritaire',run:()=>clickBtn('open8D')});
-    if(visible('fbAccounts')) cmds.push({icon:'👤',label:'Comptes & accès',run:()=>clickBtn('fbAccounts')});
+    if(typeof _tabletMode!=='undefined') cmds.push({icon:icon('tablet',16),label:'Basculer le mode tablette',run:()=>clickBtn('tabletTgl')});
+    if(visible('open8D')) cmds.push({icon:icon('clipboard',16),label:'Atelier 8D — problème prioritaire',run:()=>clickBtn('open8D')});
+    if(visible('fbAccounts')) cmds.push({icon:icon('userCircle',16),label:'Comptes & accès',run:()=>clickBtn('fbAccounts')});
     if(visible('fbSignOut')) cmds.push({icon:'⎋',label:'Se déconnecter',run:()=>clickBtn('fbSignOut')});
     DIMS.forEach(d=>{ if(!d.hidden && d._btn) cmds.push({icon:'▾',label:'Filtre : '+d.label,run:()=>d._btn.click()}); });
     return cmds;
@@ -2810,7 +2869,7 @@ document.querySelectorAll('.heat-tab').forEach(t=>t.addEventListener('click',()=
 const _savedTheme=lsGet(LS.theme,'dark');
 curTheme=_savedTheme;
 if(_savedTheme==='light') document.documentElement.setAttribute('data-theme','light');
-(function(){const b=document.getElementById('themeTgl');b.querySelector('.ic').textContent=(_savedTheme==='light')?'🌙':'☀️';b.querySelector('.tt').textContent=(_savedTheme==='light')?'Sombre':'Clair';})();
+(function(){const b=document.getElementById('themeTgl');b.querySelector('.ic').innerHTML=icon((_savedTheme==='light')?'moon':'sun',16);b.querySelector('.tt').textContent=(_savedTheme==='light')?'Sombre':'Clair';})();
 initCharts();
 render();
 renderD8Trend();
@@ -2912,7 +2971,7 @@ const QROLE_ORDER=['manager','technicien','tl','utilisateur'];
 const QROLE_LABELS={manager:'Manager Qualité',technicien:'Technicien Qualité',tl:'TL Qualité',utilisateur:'Utilisateur'};
 const MODULE_ORDER=['dash','claim','gestion','report','pnok','d8report'];
 const MODULE_LABELS={dash:'Tableau de bord',claim:'Réclamation',gestion:'Gestion',report:'Rapport',pnok:'Pareto NOK',d8report:'Rapport 8D'};
-const MODULE_ICONS={dash:'📊',claim:'➕',gestion:'⚙️',report:'📄',pnok:'📊',d8report:'📋'};
+const MODULE_ICONS={dash:icon('barchart',14),claim:icon('plus',14),gestion:icon('gear',14),report:icon('fileText',14),pnok:icon('barchart',14),d8report:icon('clipboard',14)};
 const PERM_ORDER=['none','read','edit'];
 const PERM_LABELS={none:'Aucun',read:'Lecture',edit:'Édition'};
 const DEFAULT_ROLE_PERMS={
@@ -2952,7 +3011,7 @@ function applyAccessGates(){
     if(!noAccessMsg){
       noAccessMsg=document.createElement('div'); noAccessMsg.id='noAccessMsg';
       noAccessMsg.style.cssText='max-width:520px;margin:15vh auto;text-align:center;padding:30px;color:var(--mid);font-size:15px';
-      noAccessMsg.innerHTML='🔒 Accès non autorisé pour ton rôle.<br>Contacte un administrateur si tu penses que c’est une erreur.';
+      noAccessMsg.innerHTML=`${icon('lock',16)} Accès non autorisé pour ton rôle.<br>Contacte un administrateur si tu penses que c’est une erreur.`;
       document.body.appendChild(noAccessMsg);
     }
   } else if(noAccessMsg){ noAccessMsg.remove(); }
@@ -3200,12 +3259,12 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
       return '<div class="ac-row'+(dis?' ac-dis':'')+'">'
         +'<div class="ac-main"><div class="ac-mail">'+_esc(a.email||'—')+(uid===me?' <span class="ac-you">vous</span>':'')+'</div>'
         +'<div class="ac-meta"><span class="ac-badge '+(isAdm?'adm':'usr')+'">'+_esc(badgeLabel)+'</span>'
-        +'<span class="ac-state">'+(dis?'⛔ désactivé':'✅ actif')+'</span></div></div>'
+        +'<span class="ac-state">'+(dis?icon('close',12)+' désactivé':icon('check',12)+' actif')+'</span></div></div>'
         +'<div class="ac-act">'
         +'<select data-acqrole="'+uid+'" title="Rôle du compte" class="ac-qrole-sel">'+roleOpts+'</select>'
-        +'<button data-acreset="'+uid+'" title="Envoyer un lien de réinitialisation du mot de passe">🔑 Mot de passe</button>'
+        +'<button data-acreset="'+uid+'" title="Envoyer un lien de réinitialisation du mot de passe">'+icon('key',12)+' Mot de passe</button>'
         +'<button data-acdis="'+uid+'" title="Activer / désactiver l’accès">'+(dis?'Activer':'Désactiver')+'</button>'
-        +'<button data-acdel="'+uid+'" class="ac-del" title="Retirer du registre">🗑</button>'
+        +'<button data-acdel="'+uid+'" class="ac-del" title="Retirer du registre" aria-label="Retirer ce compte du registre">'+icon('trash',12)+'</button>'
         +'</div></div>';
     }).join('');
   }

@@ -23,12 +23,16 @@
   --grad-c:linear-gradient(180deg,#fb5a6a,#7a1f2c);
   --grad-g:linear-gradient(180deg,#34d399,#0f6b4d);
   --grad-b:linear-gradient(135deg,#3a63e8,#22d3ee);
-  --r-lg:22px; --r-md:15px; --r-sm:10px;
+  --r-lg:22px; --r-md:15px; --r-sm:10px; --r-xs:8px;
   --glass-blur:20px; --glass-sat:160%;
   --shadow:0 1px 1px rgba(0,0,0,.25),0 20px 44px -22px rgba(0,0,0,.65);
   --shadow-hover:0 2px 3px rgba(0,0,0,.3),0 30px 60px -20px rgba(0,0,0,.7);
+  --shadow-sm:0 1px 1px rgba(0,0,0,.2),0 8px 18px -10px rgba(0,0,0,.5);
   --hairline:inset 0 1px 0 rgba(255,255,255,.05);
   --ring:0 0 0 3px rgba(92,141,255,.32);
+  --pistachio:#a8e05f; --pistachio-fill:#8bc34a; --pistachio-ink:#20330f;
+  --pistachio-ring:0 0 0 3px rgba(139,195,74,.35);
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px; --space-6:24px; --space-7:32px; --space-8:40px;
 }
 [data-theme="light"]{
   --bg:#eef1f8;
@@ -45,8 +49,10 @@
   --grad-b:linear-gradient(135deg,#2350c9,#0891b2);
   --shadow:0 1px 1px rgba(15,27,48,.04),0 20px 40px -20px rgba(15,27,48,.14);
   --shadow-hover:0 2px 4px rgba(15,27,48,.06),0 30px 54px -18px rgba(15,27,48,.20);
+  --shadow-sm:0 1px 1px rgba(15,27,48,.03),0 8px 16px -10px rgba(15,27,48,.12);
   --hairline:inset 0 1px 0 rgba(255,255,255,.65);
   --ring:0 0 0 3px rgba(35,80,201,.20);
+  --pistachio:#4f7a1f;
 }
 
 /* ---------- 2. Base ---------- */
