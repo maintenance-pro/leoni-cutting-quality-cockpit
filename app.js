@@ -269,6 +269,42 @@ let _nClaims = 0;
   _nClaims = Array.isArray(saved)?saved.length:0;
 })();
 
+/* ════════ VRAIES DONNÉES vs JEU DE DÉMONSTRATION ════════
+   Le gros jeu embarqué (démo) ne doit PLUS gonfler les chiffres du tableau de bord.
+   Il ne sert désormais qu'à alimenter les listes déroulantes (natures, familles…).
+   Tout ce qui est compté/affiché passe par realRows() = uniquement les réclamations
+   réellement saisies ou importées (marquées _u), non supprimées. */
+function realRows(){ return DATA.rows.filter(r=>r._u && !r._del); }
+const _claimSig = r => [r.d,r.q,r.na,r.ma,r.op,r.sh].join('|');
+
+/* Nettoyage des doublons déjà enregistrés (ex. même fichier Excel importé plusieurs
+   fois) : on ne garde qu'une occurrence de chaque réclamation identique. */
+(function dedupeClaims(){
+  // Nettoyage UNIQUE (drapeau) : on répare le cumul de ré-imports actuel, mais on ne
+  // refusionne pas les doublons « légitimes » (2 vrais événements aux mêmes champs) saisis ensuite.
+  let done=false; try{ done=localStorage.getItem('lwsq_dedup_v1')==='1'; }catch(e){}
+  if(done) return;
+  const seen=new Set(); let removed=0;
+  for(let i=DATA.rows.length-1;i>=0;i--){
+    const r=DATA.rows[i]; if(!r._u) continue;
+    const s=_claimSig(r);
+    if(seen.has(s)){ DATA.rows.splice(i,1); removed++; } else seen.add(s);
+  }
+  try{ localStorage.setItem('lwsq_dedup_v1','1'); }catch(e){}
+  if(removed){
+    lsSet(LS.claims, DATA.rows.filter(r=>r._u));
+    _nClaims=Math.max(0,_nClaims-removed);
+    setTimeout(()=>{ try{ toast(`Doublons nettoyés : ${removed} réclamation(s) en double supprimée(s)`); }catch(e){} }, 1600);
+  }
+})();
+
+/* Bornes de période recalculées sur les VRAIES données (plus le jeu de démo). */
+function recomputeMeta(){
+  const ds=realRows().map(r=>r.d).filter(Boolean).sort();
+  DATA.meta.dmin=ds[0]||''; DATA.meta.dmax=ds[ds.length-1]||'';
+}
+recomputeMeta();
+
 /* --- référentiels (superviseurs / opérateurs / natures / familles / outils) --- */
 let SUPS = lsGet(LS.sups, null);
 if(!SUPS){
@@ -310,6 +346,19 @@ function todayLocal(offsetDays=0){
 /* parseur de date jour/mois tolérant, partagé par tous les imports.
    Convention FR/MA (JJ/MM) appliquée par défaut quand les deux nombres sont ambigus (<=12) ;
    sinon le nombre >12 est reconnu sans ambiguïté comme le jour. */
+/* Date locale AAAA-MM-JJ depuis un objet Date, SANS passer par UTC (toISOString décalait
+   d'un jour en fuseau UTC+1 — Maroc). On lit les composants locaux tels qu'affichés. */
+function ymdLocal(d){ const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+/* Quantité entière robuste (pièces) : accepte un nombre, les séparateurs de milliers
+   (espace normal/insécable/fine, apostrophe) et la virgule décimale ; arrondit à l'entier. */
+function toIntQ(v){
+  if(v==null||v==='') return NaN;
+  if(typeof v==='number') return isFinite(v)?Math.round(v):NaN;
+  let s=String(v).trim().replace(/[\s   ']/g,'');
+  if(/^[+-]?\d+,\d+$/.test(s)) s=s.replace(',','.');   // 12,5 -> 12.5
+  const n=parseFloat(s.replace(/[^0-9.\-]/g,''));
+  return isNaN(n)?NaN:Math.round(n);
+}
 function parseDMY(s){
   const m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
   if(!m) return null;
@@ -321,7 +370,7 @@ function parseDMY(s){
 /* parseur de date tolérant : Date, AAAA-MM-JJ, JJ/MM/AAAA, MM/JJ/AAAA (heure ignorée) */
 function parseAnyDate(v){
   if(v==null||v==='') return null;
-  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if(v instanceof Date && !isNaN(v)) return ymdLocal(v);
   const s=String(v).trim().split(/[ T]/)[0];
   let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
   return parseDMY(s);
@@ -329,14 +378,14 @@ function parseAnyDate(v){
 // Année de la feuille PPM (File 2) : déduite de la donnée la plus récente du jeu importé, jamais figée en dur
 const PPM_YEAR=(DATA.meta&&DATA.meta.dmax)?DATA.meta.dmax.slice(0,4):String(new Date().getFullYear());
 function prodByMonth(){ const m=new Map(); PROD.forEach(p=>{const k=(p.d||'').slice(0,7); if(k) m.set(k,(m.get(k)||0)+(+p.q||0));}); return m; }
-function defByMonth(){ const m=new Map(); DATA.rows.forEach(r=>{const k=(r.d||'').slice(0,7); if(k) m.set(k,(m.get(k)||0)+(+r.q||0));}); return m; }
+function defByMonth(){ const m=new Map(); realRows().forEach(r=>{const k=(r.d||'').slice(0,7); if(k) m.set(k,(m.get(k)||0)+(+r.q||0));}); return m; }
 /* jours d'un mois ayant une production saisie (>0) */
 function prodDaysOfMonth(key){ return new Set(PROD.filter(p=>(p.d||'').slice(0,7)===key && (+p.q)>0).map(p=>p.d)); }
 /* défauts enregistrés UNIQUEMENT sur ces jours (null si aucune ligne défaut ces jours-là) */
 function defOnProdDays(key){
   const days=prodDaysOfMonth(key); if(!days.size) return null;
   let def=0, has=false;
-  DATA.rows.forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
+  realRows().forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
   return has?def:null;
 }
 /* PPM cohérent : défauts ÷ production sur LES MÊMES JOURS (null si pas de recouvrement) */
@@ -351,6 +400,7 @@ function ppmForKey(key){
 
 function rowsFilteredExcept(exceptKey){
   return DATA.rows.filter(r=>{
+    if(!r._u || r._del) return false;
     for(const d of DIMS){
       if(d.key===exceptKey) continue;
       const s=filters[d.key];
@@ -361,7 +411,7 @@ function rowsFilteredExcept(exceptKey){
 }
 function applyFilters(){
   return DATA.rows.filter(r=>{
-    if(r._del) return false;
+    if(!r._u || r._del) return false;
     for(const d of DIMS){ const s=filters[d.key]; if(s.size && !s.has(r[d.field])) return false; }
     return true;
   });
@@ -554,10 +604,12 @@ function legendInto(elId,labels){
 let _ppmNotifyOn=false; try{ _ppmNotifyOn = localStorage.getItem('lwsq_ppmnotify_v1')==='1'; }catch(e){}
 let _ppmAlertDismissed=null;   // valeur (arrondie) de PPM pour laquelle la bannière a été masquée
 let _ppmWasOver=null;          // état précédent : ne notifier qu'au moment où on bascule en dépassement
+let _ppmLastSig=null;          // dernier PPM (réel) affiché dans la bannière
 function updatePPMAlert(ppmG,tgt,over){
   const banner=document.getElementById('ppmAlert'); if(!banner) return;
   if(!over){ banner.style.display='none'; _ppmWasOver=false; return; }
   const sig=Math.round(ppmG), gap=Math.round(ppmG-tgt), pct=tgt?Math.round(gap/tgt*100):0;
+  _ppmLastSig=sig;
   const t=document.getElementById('ppmAlertTitle'), s=document.getElementById('ppmAlertSub');
   if(t) t.textContent='PPM global au-dessus de la cible';
   if(s) s.textContent=`${fmt(sig)} PPM vs cible ${fmt(tgt)} · +${fmt(gap)} PPM (+${pct}%)`;
@@ -571,7 +623,7 @@ function updatePPMAlert(ppmG,tgt,over){
 (function(){
   const closeBtn=document.getElementById('ppmAlertClose'), bellBtn=document.getElementById('ppmAlertBell');
   if(closeBtn) closeBtn.addEventListener('click',()=>{
-    _ppmAlertDismissed=Math.round(DATA.ppm.globalPPM);
+    _ppmAlertDismissed=_ppmLastSig;
     document.getElementById('ppmAlert').style.display='none';
   });
   if(bellBtn) bellBtn.addEventListener('click',()=>{
@@ -648,6 +700,7 @@ function animateKPIs(kp){
 
 let _lastReport=null;
 function render(){
+  recomputeMeta();
   const fr=applyFilters();
   renderFilterChrome();
 
@@ -658,8 +711,15 @@ function render(){
   const sites=new Set(fr.map(r=>r.si)).size;
   const machines=new Set(fr.map(r=>r.ma)).size;
   const natTop=sumBy(fr,'na')[0];
-  const ppmG=DATA.ppm.globalPPM, tgt=DATA.ppm.ppmTarget;
-  const ppmState=ppmG>tgt?'bad':'ok';
+  const tgt=DATA.ppm.ppmTarget;
+  // PPM global recalculé sur les VRAIES données : total défauts ÷ total production saisie.
+  const _totProd=PROD.reduce((a,p)=>a+(+p.q||0),0);
+  const _totDef=realRows().reduce((a,r)=>a+(+r.q||0),0);
+  const ppmG=_totProd>0?Math.round(_totDef/_totProd*1e6):null;
+  const ppmState=ppmG==null?'na':(ppmG>tgt?'bad':'ok');
+  const MFR=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  const _pmin=DATA.meta.dmin?+DATA.meta.dmin.slice(5,7):0, _pmax=DATA.meta.dmax?+DATA.meta.dmax.slice(5,7):0;
+  const _ppmPeriod=(_pmin&&_pmax)?` (${MFR[_pmin]}${_pmin!==_pmax?'–'+MFR[_pmax]:''})`:'';
   updatePPMAlert(ppmG,tgt,ppmState==='bad');
   // séries hebdo (sparkline + tendance)
   const wkPairs=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
@@ -668,11 +728,11 @@ function render(){
   const wkEv=[...wkEvMap.entries()].sort((a,b)=>a[0]-b[0]).map(([,c])=>c);
   const qtyDelta=trendDelta(wkQty), evDelta=trendDelta(wkEv);
   const kp=[
-    {c:'k-crim',ic:'alertTriangle',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${DATA.meta.dmin.slice(0,7)} → ${DATA.meta.dmax.slice(0,7)} ${deltaBadge(evDelta,true)}`},
+    {c:'k-crim',ic:'alertTriangle',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${(DATA.meta.dmin||'—').slice(0,7)} → ${(DATA.meta.dmax||'—').slice(0,7)} ${deltaBadge(evDelta,true)}`},
     {c:'k-crim',ic:'box',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
-    {c:ppmState==='bad'?'k-amb':'k-grn',ic:'target',l:'PPM global (Jan–Mai)',n:ppmG||0,v:fmt(ppmG||0),u:'ppm',
-      s:`<span class="pill ${ppmState}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} ${ppmState==='bad'?'> cible':'≤ cible'}</span> cible ${tgt}`},
-    {c:'k-grn',ic:'factory',l:'Sites actifs',n:sites,v:sites,u:'',s:`production File 2 : ${fmt(DATA.ppm.globalProd/1e6)} M pcs`},
+    {c:ppmState==='bad'?'k-amb':'k-grn',ic:'target',l:'PPM global'+_ppmPeriod,n:ppmG||0,v:ppmG==null?'—':fmt(ppmG),u:ppmG==null?'':'ppm',
+      s:ppmG==null?`saisis la production (Gestion → Données) pour calculer le PPM · cible ${fmt(tgt)}`:`<span class="pill ${ppmState}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} ${ppmState==='bad'?'> cible':'≤ cible'}</span> cible ${fmt(tgt)}`},
+    {c:'k-grn',ic:'factory',l:'Sites actifs',n:sites,v:sites,u:'',s:_totProd>0?`production saisie : ${fmt(_totProd)} pcs`:`production non saisie`},
     {c:'k-vio',ic:'wrench',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
     {c:'k-amb',ic:'barchart',l:'Nature dominante',n:natTop?natTop[1]:0,v:natTop?fmt(natTop[1]):'0',u:'pcs',s:natTop?natTop[0].slice(0,30):'—'},
   ];
@@ -690,7 +750,7 @@ function render(){
     <div class="sy"><span class="sy-ic">${icon('target',18)}</span><div><div class="sy-k">Priorité défaut</div><div class="sy-v">${natTop?natTop[0].slice(0,26):'—'} <small>${natPct}%</small></div></div></div>
     <div class="sy"><span class="sy-ic">${icon('factory',18)}</span><div><div class="sy-k">Machine #1</div><div class="sy-v">${topMach?topMach[0]:'—'} <small>${topMach?fmt(topMach[1])+' pcs':''}</small></div></div></div>
     <div class="sy"><span class="sy-ic">${CAT_ICON[domSrc?domSrc[0]:'Outils']||'🔧'}</span><div><div class="sy-k">Source dominante</div><div class="sy-v">${domSrc?domSrc[0]:'—'} <small>${srcPct}%</small></div></div></div>
-    <div class="sy"><span class="sy-ic">${icon('barchart',18)}</span><div><div class="sy-k">PPM global</div><div class="sy-v">${fmt(ppmG||0)} <span class="delta ${ppmState==='bad'?'up':'down'}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} cible ${tgt}</span></div></div></div>
+    <div class="sy"><span class="sy-ic">${icon('barchart',18)}</span><div><div class="sy-k">PPM global</div><div class="sy-v">${ppmG==null?'—':fmt(ppmG)} <span class="delta ${ppmState==='bad'?'up':'down'}">${ppmG==null?'production non saisie':`${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} cible ${fmt(tgt)}`}</span></div></div></div>
     <div class="sy"><span class="sy-ic">${icon('trendup',18)}</span><div><div class="sy-k">Tendance défauts</div><div class="sy-v">${qtyDelta===null?'<small>n/a</small>':deltaBadge(qtyDelta,true)+' <small>vs période préc.</small>'}</div></div></div>`;
   // instantané des chiffres clés, réutilisé par "Envoyer le rapport" (e-mail) sans tout recalculer
   _lastReport={events,qty,avg,ppmG,tgt,ppmState,natTop,natPct,topMach,domSrc,srcPct,qtyDelta,
@@ -737,7 +797,7 @@ function render(){
   })();
 
   // en-tête de rapport (impression)
-  document.getElementById('ph-period').textContent=`Période : ${DATA.meta.dmin} → ${DATA.meta.dmax} · Édité le ${new Date().toLocaleDateString('fr-FR')} · ${fmt(events)} événements · ${fmt(qty)} pcs défaut`;
+  document.getElementById('ph-period').textContent=`Période : ${DATA.meta.dmin||'—'} → ${DATA.meta.dmax||'—'} · Édité le ${new Date().toLocaleDateString('fr-FR')} · ${fmt(events)} événements · ${fmt(qty)} pcs défaut`;
   const activeF=DIMS.filter(d=>filters[d.key].size).map(d=>`${d.label}: ${[...filters[d.key]].map(v=>d.fmt(v)).join(', ')}`);
   document.getElementById('ph-filters').textContent=activeF.length?('Filtres actifs — '+activeF.join('  ·  ')):'Vue complète (aucun filtre appliqué)';
 
@@ -753,7 +813,9 @@ function render(){
   const keyLabel=k=>{const [y,m]=k.split('-');return (MLAB[+m]||k)+(y!==PPM_YEAR?" '"+y.slice(2):'');};
   charts.ppm.data.labels=allKeys.map(keyLabel);
   // PPM réel (File 2) : valeurs sur les mois de base, null au-delà
-  const ppmReal=allKeys.map(k=>{const i=baseKeys.indexOf(k); if(i<0) return null; const q=DATA.ppm.qty.Total[i]||0,p=DATA.ppm.production[i]||0; return p?Math.round(q/p*1e6):null;});
+  // Ligne « PPM réel (File 2) » = données de démonstration → retirée.
+  // Le PPM affiché provient uniquement des vraies données (ppmCalc = défauts ÷ production saisie).
+  const ppmReal=allKeys.map(()=>null);
   // PPM calculé depuis la production saisie (défauts ÷ production) sur tous les mois
   const ppmCalc=allKeys.map(k=>ppmForKey(k));
   // cible prolongée sur tout l'axe
@@ -778,15 +840,16 @@ function render(){
   }
   /* --- bandeau de synthèse PPM (lisibilité) --- */
   (function(){
-    const cur=Math.round(ppmG), gap=Math.round(ppmG-tgt), over=ppmG>tgt;
+    const has=ppmG!=null;
+    const cur=has?Math.round(ppmG):null, gap=has?Math.round(ppmG-tgt):null, over=has&&ppmG>tgt;
     const cCol=over?'var(--crimson,#fb5a6a)':'var(--green,#34d399)';
-    const cv=document.getElementById('ppmCurVal'); if(cv){ cv.textContent=fmt(cur); cv.style.color=cCol; }
+    const cv=document.getElementById('ppmCurVal'); if(cv){ cv.textContent=has?fmt(cur):'—'; cv.style.color=has?cCol:'var(--mid)'; }
     const tv=document.getElementById('ppmTgtVal'); if(tv){ tv.textContent=fmt(tgt); tv.style.color='var(--green,#34d399)'; }
-    const gv=document.getElementById('ppmGapVal'); if(gv){ gv.textContent=(gap>0?'+':'')+fmt(gap); gv.style.color=cCol; }
-    const st=document.getElementById('ppmStatus'); if(st){ st.className='ppm-status '+(over?'bad':'good'); st.textContent=over?('⚠ '+fmt(Math.abs(gap))+' PPM au-dessus de la cible'):('✓ '+fmt(Math.abs(gap))+' PPM sous la cible'); }
+    const gv=document.getElementById('ppmGapVal'); if(gv){ gv.textContent=has?((gap>0?'+':'')+fmt(gap)):'—'; gv.style.color=has?cCol:'var(--mid)'; }
+    const st=document.getElementById('ppmStatus'); if(st){ st.className='ppm-status '+(has?(over?'bad':'good'):''); st.textContent=has?(over?('⚠ '+fmt(Math.abs(gap))+' PPM au-dessus de la cible'):('✓ '+fmt(Math.abs(gap))+' PPM sous la cible')):'Production non saisie — PPM global indisponible'; }
     const mo=document.getElementById('ppmMonths');
     if(mo){
-      const moVals=DATA.ppm.months.map((mn,i)=>{ const q=DATA.ppm.qty.Total[i]||0,p=DATA.ppm.production[i]||0; return {mn, v:p?Math.round(q/p*1e6):null}; });
+      const moVals=DATA.ppm.months.map((mn,i)=>{ const k=`${PPM_YEAR}-${String(i+1).padStart(2,'0')}`; return {mn, v:ppmForKey(k)}; });
       mo.innerHTML=moVals.map(x=>{
         if(x.v==null) return '<div class="ppm-mo"><div class="mn">'+x.mn+'</div><div class="mv" style="color:var(--muted,#8190a8)">—</div></div>';
         const cls=x.v>tgt?'over':'under', col=x.v>tgt?'var(--crimson,#fb5a6a)':'var(--green,#34d399)';
@@ -1655,7 +1718,7 @@ function emailReportBody(){
     `RÉSUMÉ`,
     `- Événements défaut : ${fmt(r.events||0)}`,
     `- Quantité défaut totale : ${fmt(r.qty||0)} pcs (moy. ${fmt(r.avg||0)} pcs/événement)`,
-    `- PPM global : ${fmt(r.ppmG||0)} — cible ${fmt(r.tgt||0)} (${r.ppmState==='bad'?'AU-DESSUS de la cible ⚠':'dans la cible ✓'})`,
+    `- PPM global : ${r.ppmG==null?'non calculé (production non saisie)':`${fmt(r.ppmG)} — cible ${fmt(r.tgt||0)} (${r.ppmState==='bad'?'AU-DESSUS de la cible ⚠':'dans la cible ✓'})`}`,
     `- Tendance défauts : ${r.qtyDelta==null?'n/a':(r.qtyDelta>0?'+':'')+r.qtyDelta+'% vs période précédente'}`,
     ``,
     `PRIORITÉS`,
@@ -1742,7 +1805,7 @@ document.getElementById('d8File').addEventListener('change',e=>{
 
 /* ---------------- BOOT ---------------- */
 document.getElementById('m-plant').textContent=DATA.meta.plant;
-document.getElementById('m-period').textContent=DATA.meta.dmin+' → '+DATA.meta.dmax;
+document.getElementById('m-period').textContent=(DATA.meta.dmin||'—')+' → '+(DATA.meta.dmax||'—');
 document.getElementById('m-gen').textContent=DATA.meta.generated;
 
 /* ============================================================
@@ -2055,7 +2118,7 @@ function wireMgTab(tab){
 /* --- import Excel / CSV des opérateurs ou superviseurs --- */
 function normHire(v){
   if(v==null||v==='') return '';
-  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if(v instanceof Date && !isNaN(v)) return ymdLocal(v);
   const s=String(v).trim().split(/[ T]/)[0];
   let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
   return parseDMY(s) || '';
@@ -2104,10 +2167,10 @@ async function importProdExcel(file){
     try{
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});
       if(!rows.length){ toast('Fichier vide',true); return; }
       const hdr=rows[0].map(c=>String(c).toLowerCase().trim());
-      const num=v=>{ const n=parseFloat(String(v==null?'':v).replace(/[^\d.\-]/g,'')); return isNaN(n)?0:n; };
+      const num=v=>{ if(typeof v==='number') return isFinite(v)?v:0; const n=parseFloat(String(v==null?'':v).replace(/[^\d.\-]/g,'')); return isNaN(n)?0:n; };
       // --- détection format MES coupe (Work Station / Good Parts / Quantity + date) ---
       const wsCol  = hdr.findIndex(h=>/work ?station|poste de travail/.test(h));
       const gpCol  = hdr.findIndex(h=>/good ?parts|pi[eè]ces bonnes|bonnes/.test(h));
@@ -2165,7 +2228,7 @@ async function importProdExcel(file){
       let added=0,upd=0;
       for(let i=start;i<rows.length;i++){
         const r=rows[i]; if(!r) continue;
-        const d=parseAnyDate(r[dCol]); const q=parseInt(String(r[qCol]==null?'':r[qCol]).replace(/[^\d]/g,''));
+        const d=parseAnyDate(r[dCol]); const q=toIntQ(r[qCol]);
         if(!d||!(q>0)) continue;
         const ex=PROD.find(p=>p.d===d); if(ex){ ex.q=q; upd++; } else { PROD.push({d,q}); added++; }
       }
@@ -2208,8 +2271,9 @@ function exportRefsXlsx(){
           {name:'Familles',rows:familiesAll().map(f=>({Famille:f}))}],'referentiels.xlsx');
 }
 function exportClaimsXlsx(){
-  if(!DATA.rows.length){ toast('Aucune donnée',true); return; }
-  const rows=DATA.rows.map(r=>{ const o={}; XLSX_COLS.forEach(c=>{ o[c.t]=(r[c.k]==null?'':r[c.k]); }); return o; });
+  const _rr=realRows();
+  if(!_rr.length){ toast('Aucune donnée',true); return; }
+  const rows=_rr.map(r=>{ const o={}; XLSX_COLS.forEach(c=>{ o[c.t]=(r[c.k]==null?'':r[c.k]); }); return o; });
   dlXlsx([{name:'Défauts',rows}],'defauts_cutting.xlsx');
 }
 
@@ -2494,15 +2558,15 @@ async function importClaimsExcel(file){
   const rd=new FileReader();
   rd.onload=e=>{ try{
     const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
     if(!rows.length){ toast('Fichier vide',true); return; }
     const hdr=rows[0].map(c=>String(c).toLowerCase());
     const map={}; CLAIM_IMPORT_COLS.forEach(c=>{ const i=hdr.findIndex(h=>c.re.test(h)); if(i>=0) map[c.k]=i; });
     if(map.d===undefined||map.q===undefined){ toast('Colonnes Date + Quantité requises',true); return; }
-    let added=0;
+    const _have=new Set(realRows().map(_claimSig)); let added=0, dup=0;
     for(let i=1;i<rows.length;i++){
       const r=rows[i]; if(!r) continue;
-      const d=normHire(r[map.d]); const q=parseInt(String(r[map.q]==null?'':r[map.q]).replace(/[^\d]/g,''));
+      const d=normHire(r[map.d]); const q=toIntQ(r[map.q]);
       if(!d||!(q>0)) continue;
       const dd=new Date(d+'T00:00:00'), get=k=>map[k]!==undefined?String(r[map[k]]==null?'':r[map[k]]).trim():'';
       const na=get('na'), fa=get('fa'), su=get('su').toUpperCase(), op=get('op'), mtv=get('mt');
@@ -2512,6 +2576,7 @@ async function importClaimsExcel(file){
         op:op||'—', sh:get('sh')||'', na:na||'Non précisé', su:su||'—', fa:fa||'—', q,
         prc:get('prc'), rep:get('rep'), oud:get('oud'), out:get('out'), cao:get('cao'),
         nb:get('nb'), aql:get('aql'), _u:1 };
+      const _s=_claimSig(rec); if(_have.has(_s)){ dup++; continue; } _have.add(_s);   // anti-doublon
       decorate(rec);
       if(mtv){ rec.mt=mtv; MACH_TYPE[rec.ma]=mtv; }
       DATA.rows.push(rec);
@@ -2524,7 +2589,7 @@ async function importClaimsExcel(file){
     lsSet(LS.claims, DATA.rows.filter(r=>r._u));
     lsSet(LS.machtype, MACH_TYPE);
     render(); renderMgTab(_mgTab);
-    toast(`Import défauts : ${added} réclamation(s) ajoutée(s)${window._fbReady?' · synchronisé sur tous les postes ✓':' · enregistré localement (synchro au prochain login)'}`);
+    toast(`Import défauts : ${added} réclamation(s) ajoutée(s)${dup?` · ${dup} doublon(s) ignoré(s)`:''}${window._fbReady?' · synchronisé sur tous les postes ✓':' · enregistré localement (synchro au prochain login)'}`);
   }catch(err){ toast('Erreur de lecture du fichier Excel',true); } };
   rd.readAsArrayBuffer(file);
 }
@@ -2886,8 +2951,9 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
 /* ===================== MODE TÉLÉVISION ===================== */
 (function(){
   function tvCompute(){
-    const yr=Math.max.apply(null, DATA.rows.map(r=>+r.y||0));
-    const rows=DATA.rows.filter(r=>(+r.y||0)===yr);
+    const RR=realRows();
+    const yr=RR.length?Math.max.apply(null, RR.map(r=>+r.y||0)):new Date().getFullYear();
+    const rows=RR.filter(r=>(+r.y||0)===yr);
     let qty=0; const byNa={}, byMa={}, byPc={}, byWk={}, sites={};
     rows.forEach(r=>{ const q=+r.q||0; qty+=q;
       if(r.na) byNa[r.na]=(byNa[r.na]||0)+q;
@@ -2902,7 +2968,7 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     return { yr, events:rows.length, qty, nat:top(byNa), mac:top(byMa), src:top(byPc), sites:Object.keys(sites).length,
       macTop5:topN(byMa,5), weeks,
       ppm:DATA.ppm.globalPPM, tgt:DATA.ppm.ppmTarget,
-      months:DATA.ppm.months.map((mn,i)=>{ const q=DATA.ppm.qty.Total[i]||0,p=DATA.ppm.production[i]||0; return {mn, v:p?Math.round(q/p*1e6):null}; }) };
+      months:DATA.ppm.months.map((mn,i)=>{ const k=`${PPM_YEAR}-${String(i+1).padStart(2,'0')}`; return {mn, v:ppmForKey(k)}; }) };
   }
   /* Graphiques Chart.js du mode TV — créés une fois (canvas visibles au premier
      rendu), puis simplement mis à jour à chaque rafraîchissement (15 s). */
