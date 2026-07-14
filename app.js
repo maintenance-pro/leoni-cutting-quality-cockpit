@@ -756,45 +756,7 @@ function render(){
   _lastReport={events,qty,avg,ppmG,tgt,ppmState,natTop,natPct,topMach,domSrc,srcPct,qtyDelta,
     dmin:DATA.meta.dmin,dmax:DATA.meta.dmax,filters:DIMS.filter(d=>filters[d.key].size).map(d=>`${d.label}: ${[...filters[d.key]].map(v=>d.fmt(v)).join(', ')}`)};
 
-  // ===== Pilotage Qualité : dérive (SPC-lite), scrap, machines critiques, recommandation =====
-  (function(){
-    const g=id=>document.getElementById(id);
-    const badge=(id,cls,txt)=>{const e=g(id);if(e){e.className='pil-badge '+cls;e.textContent=txt;}};
-    const setv=(id,txt)=>{const e=g(id);if(e)e.textContent=txt;};
-    // 1) Détection de dérive — défauts/semaine : dernière semaine vs base mobile ±σ
-    const wk=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
-    if(wk.length>=3){
-      const last=wk[wk.length-1];
-      const prev=wk.slice(Math.max(0,wk.length-7),wk.length-1).map(x=>x[1]);
-      const mean=prev.reduce((a,b)=>a+b,0)/prev.length;
-      const sd=Math.sqrt(prev.reduce((a,b)=>a+(b-mean)*(b-mean),0)/prev.length)||0;
-      const pct=mean?Math.round((last[1]-mean)/mean*100):0, dev=sd?(last[1]-mean)/sd:0;
-      setv('pil-drift-v','S'+last[0]+' · '+(pct>0?'+':'')+pct+'% · '+(dev>0?'+':'')+dev.toFixed(1)+'σ');
-      if(dev>=DRIFT_SIG) badge('pil-drift-b','bad','⚠ Dérive haussière ('+DRIFT_SIG+'σ)');
-      else if(dev<=-DRIFT_SIG) badge('pil-drift-b','good','✓ En amélioration');
-      else badge('pil-drift-b','warn','→ Sous contrôle');
-    } else { setv('pil-drift-v','—'); badge('pil-drift-b','warn','Données insuffisantes'); }
-    // 2) Scrap vs objectif — dernier mois RÉEL renseigné (vs cible perso)
-    const _pscMap=defByMonth(); const _pscK=[..._pscMap.keys()].sort();
-    const _pscTg=(SCRAP_TGT!=null && +SCRAP_TGT>0)?Math.round(+SCRAP_TGT):null;
-    if(_pscK.length && _pscTg!=null){ const res=Math.round(_pscMap.get(_pscK[_pscK.length-1])||0);
-      setv('pil-scrap-v',fmt(res)+' / '+fmt(_pscTg)+' pcs');
-      badge('pil-scrap-b', res<=_pscTg?'good':'bad', res<=_pscTg?'Sous objectif':'Dépassé +'+fmt(res-_pscTg));
-    } else { setv('pil-scrap-v','—'); badge('pil-scrap-b','warn', _pscK.length?'définir cible':'n/a'); }
-    // 3) Machines critiques — concentration 80/20
-    const ma=[...sumBy(fr,'ma')].filter(([k])=>k&&!['Inconnue','NA','—'].includes(k));
-    if(ma.length){
-      const tot=ma.reduce((a,[,v])=>a+v,0); let cum=0,n=0;
-      for(const [,v] of ma){ cum+=v; n++; if(cum/tot>=0.8) break; }
-      setv('pil-mac-v', n+' machine(s) = '+(tot?Math.round(cum/tot*100):0)+'%');
-      badge('pil-mac-b','warn','#1 '+ma[0][0]);
-    } else { setv('pil-mac-v','—'); badge('pil-mac-b','warn','—'); }
-    // 4) Recommandation d'action — problème prioritaire
-    let p=null; try{ p=detectProblem(fr); }catch(e){}
-    if(p&&p.nat){ const mc=p.machines&&p.machines[0]?p.machines[0][0]:'—';
-      setv('pil-rec-v','8D : '+String(p.nat).slice(0,40)+' · '+mc); }
-    else setv('pil-rec-v','—');
-  })();
+  // Panneau « Pilotage Qualité — Synthèse & détection de dérive » retiré à la demande.
 
   // en-tête de rapport (impression)
   document.getElementById('ph-period').textContent=`Période : ${DATA.meta.dmin||'—'} → ${DATA.meta.dmax||'—'} · Édité le ${new Date().toLocaleDateString('fr-FR')} · ${fmt(events)} événements · ${fmt(qty)} pcs défaut`;
@@ -1261,12 +1223,13 @@ function deleteAllData(){
       });
     }
   }catch(e){}
-  // 3) Marque ces clés "déjà migrées" pour que la synchro ne ré-uploade JAMAIS le local ensuite.
-  [LS.claims, LS.prod, LS.prodm, LS.prodcao].forEach(k=>{ try{ localStorage.setItem('lwsq_seeded_'+k,'1'); }catch(e){} });
+  // 3) SIGNAL DE PURGE : force TOUS les postes/onglets ouverts à se recharger (nouveau code +
+  //    cloud vide = aucune réinjection possible). Équivalent sûr de « fermer tous les onglets ».
+  try{ if(window._db) window._db.ref('cockpit/_wipe').set(Date.now()); }catch(e){}
   DIMS.forEach(d=>filters[d.key].clear());     // repart sans filtre
   render();
   try{ if(typeof updateTrashUI==='function') updateTrashUI(); }catch(e){}
-  toast('Toutes les données supprimées — application vierge, rien à récupérer');
+  toast('Toutes les données supprimées — rechargement de tous les postes…');
 }
 
 /* ---------------- FILE DOWNLOAD ---------------- */
@@ -1819,7 +1782,7 @@ let d8Built=false;
 function open8D(){ if(!d8Built){prefill8D(detectProblem(applyFilters()));d8Built=true;} document.getElementById('d8Overlay').classList.add('show'); document.body.classList.add('d8-open'); document.getElementById('d8Doc').scrollTop=0; }
 function close8D(){ document.getElementById('d8Overlay').classList.remove('show'); document.body.classList.remove('d8-open'); }
 document.getElementById('open8D').addEventListener('click',open8D);
-{ const _pr=document.getElementById('pil-rec-b'); if(_pr) _pr.addEventListener('click',open8D); }
+/* bouton « Ouvrir 8D » du panneau Pilotage retiré avec le panneau */
 document.getElementById('open8D2').addEventListener('click',open8D);
 function open8Dcx(){
   const p=detectProblemCx(applyFilters());
@@ -3422,6 +3385,19 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
         });
       }catch(e){}
     });
+    // Signal de purge totale : si un poste clique sur « Tout supprimer », tous les postes
+    // actuellement ouverts se RECHARGENT (récupèrent le code à jour + le cloud vidé) → aucune
+    // réinjection possible. On ne réagit qu'aux purges survenues APRÈS le chargement de ce poste.
+    const _bootTs = Date.now();
+    try{
+      db.ref('cockpit/_wipe').on('value', s=>{
+        const t = +(s.val()||0);
+        if(t > _bootTs){
+          try{ toast('Données supprimées — rechargement…'); }catch(e){}
+          setTimeout(()=>{ try{ location.reload(); }catch(e){} }, 900);
+        }
+      });
+    }catch(e){}
   }
 
   function doLogin(){
