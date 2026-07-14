@@ -133,7 +133,7 @@ const LS = {
   nat:'lwsq_natures_v1', fam:'lwsq_families_v1', tools:'lwsq_tools_v1', theme:'lwsq_theme_v1',
   cat:'lwsq_natcat_v1', prod:'lwsq_prod_v1', ppmtgt:'lwsq_ppmtgt_v1', scraptgt:'lwsq_scraptgt_v1', prodm:'lwsq_prodm_v1', prodcao:'lwsq_prodcao_v1', machtype:'lwsq_machtype_v1', driftsig:'lwsq_driftsig_v1',
   edits:'lwsq_rowedits_v1', roleperms:'lwsq_roleperms_v1', tablet:'lwsq_tablet_v1', audit:'lwsq_audit_v1',
-  d8archive:'lwsq_d8archive_v1'
+  d8archive:'lwsq_d8archive_v1', trash:'lwsq_trash_v1'
 };
 /* Journal d'audit : libellé humain par clé partagée — sert à savoir QUI a touché
    QUELLE section QUAND (traçabilité), sans avoir à diffuser le détail de chaque champ. */
@@ -143,7 +143,7 @@ const AUDIT_LABELS = {
   [LS.cat]:'Classification (source défaut)', [LS.prod]:'Production (saisie)', [LS.ppmtgt]:'Cible PPM',
   [LS.scraptgt]:'Cible scrap', [LS.prodm]:'Production mensuelle', [LS.prodcao]:'Production CAO',
   [LS.machtype]:'Type de machine', [LS.driftsig]:'Seuil de dérive (SPC)', [LS.edits]:'Correction de ligne',
-  [LS.roleperms]:'Permissions par rôle', [LS.d8archive]:'Archive 8D'
+  [LS.roleperms]:'Permissions par rôle', [LS.d8archive]:'Archive 8D', [LS.trash]:'Corbeille (réclamations supprimées)'
 };
 function auditWho(){
   try{
@@ -774,13 +774,13 @@ function render(){
       else if(dev<=-DRIFT_SIG) badge('pil-drift-b','good','✓ En amélioration');
       else badge('pil-drift-b','warn','→ Sous contrôle');
     } else { setv('pil-drift-v','—'); badge('pil-drift-b','warn','Données insuffisantes'); }
-    // 2) Scrap vs objectif — dernier mois renseigné
-    const R=(DATA.ppm&&DATA.ppm.scrapResultPcs)||[], T=(DATA.ppm&&DATA.ppm.scrapTargetPcs)||[]; let si=-1;
-    for(let k=Math.max(R.length,T.length)-1;k>=0;k--){ if(R[k]!=null&&T[k]!=null){si=k;break;} }
-    if(si>=0){ const res=Math.round(R[si]), tg=Math.round(T[si]);
-      setv('pil-scrap-v',fmt(res)+' / '+fmt(tg)+' pcs');
-      badge('pil-scrap-b', res<=tg?'good':'bad', res<=tg?'Sous objectif':'Dépassé +'+fmt(res-tg));
-    } else { setv('pil-scrap-v','—'); badge('pil-scrap-b','warn','n/a'); }
+    // 2) Scrap vs objectif — dernier mois RÉEL renseigné (vs cible perso)
+    const _pscMap=defByMonth(); const _pscK=[..._pscMap.keys()].sort();
+    const _pscTg=(SCRAP_TGT!=null && +SCRAP_TGT>0)?Math.round(+SCRAP_TGT):null;
+    if(_pscK.length && _pscTg!=null){ const res=Math.round(_pscMap.get(_pscK[_pscK.length-1])||0);
+      setv('pil-scrap-v',fmt(res)+' / '+fmt(_pscTg)+' pcs');
+      badge('pil-scrap-b', res<=_pscTg?'good':'bad', res<=_pscTg?'Sous objectif':'Dépassé +'+fmt(res-_pscTg));
+    } else { setv('pil-scrap-v','—'); badge('pil-scrap-b','warn', _pscK.length?'définir cible':'n/a'); }
     // 3) Machines critiques — concentration 80/20
     const ma=[...sumBy(fr,'ma')].filter(([k])=>k&&!['Inconnue','NA','—'].includes(k));
     if(ma.length){
@@ -938,16 +938,26 @@ function render(){
   document.getElementById('cls-sub').textContent=`Source dominante : ${domCat}`;
   updateClassWheel(clLabels,clData,clCol);
 
-  // objectif scrap (File 2, mensuel) + ligne cible (éditable)
-  const scR=DATA.ppm.scrapResultPcs.map(v=>v==null?null:Math.round(v));
+  // Scrap mensuel = quantité défaut RÉELLE par mois (axe dynamique). Cible = valeur perso si définie.
+  // → tout se vide dès qu'il n'y a plus de données réelles (plus aucune valeur de démo File 2).
+  const _scMLAB=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+  const _scMap=defByMonth();
+  const _scKeys=[..._scMap.keys()].sort();
+  charts.scrap.data.labels=_scKeys.map(k=>{const[y,m]=k.split('-');return (_scMLAB[+m]||m)+" '"+String(y).slice(2);});
+  const scR=_scKeys.map(k=>Math.round(_scMap.get(k)||0));
   const useScT = SCRAP_TGT!=null && +SCRAP_TGT>0;
-  const scT = useScT ? scR.map(v=>v==null?null:Math.round(+SCRAP_TGT)) : DATA.ppm.scrapTargetPcs.map(v=>v==null?null:Math.round(v));
+  const scT = useScT ? _scKeys.map(()=>Math.round(+SCRAP_TGT)) : _scKeys.map(()=>null);
   charts.scrap.data.datasets[0].data=scR;
   charts.scrap.data.datasets[1].data=scT;
   charts.scrap.update();
   const scRsum=scR.reduce((a,v)=>a+(v||0),0), scTsum=scT.reduce((a,v)=>a+(v||0),0);
   const scPct=scTsum?Math.round((scRsum-scTsum)/scTsum*100):0;
-  document.getElementById('scrap-sub').innerHTML=`${fmt(scRsum)} pcs rebutées vs cible ${fmt(scTsum)}${useScT?' <span style="color:var(--violet)">(perso)</span>':''} · <span class="delta ${scPct<=0?'down':'up'}">${icon(scPct<=0?'chevronDown':'chevronUp',11)} ${Math.abs(scPct)}% ${scPct<=0?'sous cible':'au-dessus'}</span>`;
+  const _scSub=document.getElementById('scrap-sub');
+  if(_scSub){
+    if(!_scKeys.length) _scSub.textContent='Aucune donnée';
+    else if(!useScT) _scSub.innerHTML=`${fmt(scRsum)} pcs rebutées · définis une cible scrap (Gestion → Données)`;
+    else _scSub.innerHTML=`${fmt(scRsum)} pcs rebutées vs cible ${fmt(scTsum)} <span style="color:var(--violet)">(perso)</span> · <span class="delta ${scPct<=0?'down':'up'}">${icon(scPct<=0?'chevronDown':'chevronUp',11)} ${Math.abs(scPct)}% ${scPct<=0?'sous cible':'au-dessus'}</span>`;
+  }
 
   // défauts par shift (réclamations avec shift renseigné)
   const shRows=fr.filter(r=>r.sh && !BAD_VALS.includes(r.sh));
@@ -1128,6 +1138,136 @@ document.getElementById('csvBtn').addEventListener('click',()=>{
   const rows=tableRows.map(r=>{ const o={}; XLSX_COLS.forEach(c=>{ o[c.t]=(r[c.k]==null?'':r[c.k]); }); return o; });
   dlXlsx([{name:'Défauts (filtre)',rows}],'cutting_defauts_filtre.xlsx');
 });
+
+/* Registre : Importer (Excel/CSV) + Supprimer la sélection courante — pour mettre à jour
+   et vérifier les données directement depuis le tableau. */
+(function(){
+  const ib=document.getElementById('tblImpBtn'), ifl=document.getElementById('tblImpFile'), db=document.getElementById('tblDelBtn');
+  if(ib&&ifl){
+    ib.addEventListener('click',()=>ifl.click());
+    ifl.addEventListener('change',e=>{ if(e.target.files[0]) importClaimsExcel(e.target.files[0]); e.target.value=''; });
+  }
+  if(db) db.addEventListener('click',deleteAllData);
+})();
+
+function archiveToTrash(rows){
+  try {
+    const trash=lsGet(LS.trash,[]);
+    const now=Date.now();
+    rows.forEach(r=>{
+      if(r) trash.push({row:r, ts:now, who:auditWho()});
+    });
+    const maxAge=90*24*3600*1000;
+    const filtered=trash.filter(t=>now-t.ts<maxAge);
+    lsSet(LS.trash,filtered);
+  } catch(err) {
+    console.error('Erreur archivage:', err);
+  }
+}
+
+function restoreFromTrash(idx){
+  const trash=lsGet(LS.trash,[]);
+  if(idx<0||idx>=trash.length){ toast('Element invalide',true); return; }
+  
+  try {
+    const entry=trash[idx];
+    trash.splice(idx,1);
+    lsSet(LS.trash,trash);
+    
+    DATA.rows.push(entry.row);
+    const claims=lsGet(LS.claims,[]);
+    claims.push(entry.row);
+    lsSet(LS.claims,claims);
+    
+    render(); 
+    toast(`Restauree: ${entry.row.na||'...'}`); 
+    updateTrashUI();
+  } catch(err) {
+    console.error('Erreur restauration:', err);
+    toast('Erreur restauration',true);
+  }
+}
+
+function emptyTrash(){
+  if(!confirm('Vider la corbeille definitiement ? Irreversible.')) return;
+  try {
+    lsSet(LS.trash,[]);
+    toast('Corbeille videe');
+    updateTrashUI();
+  } catch(err) {
+    console.error('Erreur vidage corbeille:', err);
+    toast('Erreur',true);
+  }
+}
+
+function updateTrashUI(){
+  const trash=lsGet(LS.trash,[]);
+  const c=document.getElementById('trashContainer');
+  if(!c) return;
+  
+  if(!trash.length){ 
+    c.innerHTML='<div class="mg-empty">Vide</div>'; 
+    return; 
+  }
+  
+  let html=`<div class="mg-h">${icon('trash',16)} Corbeille</div>`;
+  html+=`<div style="overflow:auto;max-height:350px"><table class="d8-tbl" style="margin:0">`;
+  html+=`<thead><tr><th>Date</th><th>Nature</th><th>Q</th><th>Site</th><th>Par</th><th>Il y a</th><th>Expire</th><th></th></tr></thead><tbody>`;
+  
+  trash.forEach((e,i)=>{
+    const r=e.row;
+    const days=Math.floor((Date.now()-e.ts)/(24*3600*1000));
+    const exp=Math.floor((90-(Date.now()-e.ts)/(24*3600*1000)));
+    const expColor=exp<=7?'var(--amber)':'var(--green)';
+    html+=`<tr><td>${esc(r.d||'')}</td><td>${esc(r.na||'')}</td><td>${fmt(r.q||0)}</td><td>${esc(r.si||'')}</td><td style="font-size:11px">${esc(e.who||'')}</td><td style="font-size:11px">${days}j</td><td style="color:${expColor};font-size:11px">${exp}j</td><td><button class="del" data-trash-restore="${i}">${icon('undo',13)}</button></td></tr>`;
+  });
+  
+  html+=`</tbody></table></div>`;
+  html+=`<button class="mg-addbtn" id="trash-empty" style="background:var(--crimson);margin-top:9px">${icon('trash',13)} Vider</button>`;
+  
+  c.innerHTML=html;
+  document.getElementById('trash-empty')?.addEventListener('click',emptyTrash);
+  document.querySelectorAll('[data-trash-restore]').forEach(b=>{
+    b.addEventListener('click',()=>restoreFromTrash(+b.dataset.trashRestore));
+  });
+}
+
+/* SUPPRESSION TOTALE et DÉFINITIVE : efface TOUTES les données (réclamations + production),
+   sans tenir compte des filtres, en local ET sur le cloud, ET vide la corbeille
+   → rien ne peut être récupéré. Les listes de référence et les cibles (réglages) restent. */
+function deleteAllData(){
+  const n=realRows().length, np=PROD.length;
+  if(!n && !np){ toast('Aucune donnée à supprimer',true); return; }
+  const msg=`Supprimer DÉFINITIVEMENT toutes les données ?\n\n`
+    +`• ${fmt(n)} réclamation(s)\n`
+    +(np?`• ${fmt(np)} ligne(s) de production\n`:``)
+    +`\nAction IRRÉVERSIBLE — rien ne pourra être récupéré`
+    +(window._fbReady?`, y compris sur le cloud pour toute l’équipe.`:`.`);
+  if(!confirm(msg)) return;
+  DATA.rows = DATA.rows.filter(r=>!r._u);   // retire TOUTES les vraies réclamations (aucun archivage)
+  // 1) Local (+ synchro standard) : on met explicitement une valeur vide.
+  lsSet(LS.claims, []);                        // vide localStorage + cloud
+  lsSet(LS.trash, []);                         // vide la corbeille : rien à récupérer
+  PROD=[];    lsSet(LS.prod, []);
+  PRODM={};   lsSet(LS.prodm, {});
+  PRODCAO={}; lsSet(LS.prodcao, {});
+  // 2) Cloud : suppression EXPLICITE des nœuds Firebase (mise en file d'attente même hors-ligne,
+  //    et non conditionnée à _fbReady) — sinon la synchro temps réel réinjecte les anciennes
+  //    données au rechargement. C'est ce qui faisait "revenir" les données après suppression.
+  try{
+    if(window._db){
+      [LS.claims, LS.prod, LS.prodm, LS.prodcao].forEach(k=>{
+        try{ window._db.ref('cockpit/'+k).remove(); }catch(e){}
+      });
+    }
+  }catch(e){}
+  // 3) Marque ces clés "déjà migrées" pour que la synchro ne ré-uploade JAMAIS le local ensuite.
+  [LS.claims, LS.prod, LS.prodm, LS.prodcao].forEach(k=>{ try{ localStorage.setItem('lwsq_seeded_'+k,'1'); }catch(e){} });
+  DIMS.forEach(d=>filters[d.key].clear());     // repart sans filtre
+  render();
+  try{ if(typeof updateTrashUI==='function') updateTrashUI(); }catch(e){}
+  toast('Toutes les données supprimées — application vierge, rien à récupérer');
+}
 
 /* ---------------- FILE DOWNLOAD ---------------- */
 
@@ -2002,7 +2142,18 @@ function mgAudit(){
 }
 
 let _mgTab='ops', _auditQ='';
-const MG_RENDER={ops:mgOps,sups:mgSups,prod:mgProd,refs:mgRefs,data:mgData,audit:mgAudit};
+function mgTrash(){
+  const trash=lsGet(LS.trash,[]);
+  if(!trash.length) return `<div class="mg-h">${icon('trash',16)} Corbeille</div><div class="mg-empty">Aucun element</div>`;
+  const rows=trash.map((e,i)=>{
+    const r=e.row;
+    const days=Math.floor((Date.now()-e.ts)/(24*3600*1000));
+    const exp=Math.floor((90-(Date.now()-e.ts)/(24*3600*1000)));
+    return `<tr><td>${esc(r.d||'')}</td><td>${esc(r.na||'')}</td><td>${fmt(r.q||0)}</td><td>${esc(r.si||'')}</td><td style="font-size:11px">${esc(e.who||'')}</td><td style="font-size:11px">${days}j</td><td style="color:${exp<=7?'var(--amber)':'var(--green)'};font-size:11px">${exp}j</td><td><button class="del" data-trash-restore="${i}">${icon('undo',13)}</button></td></tr>`;
+  }).join('');
+  return `<div class="mg-h">${icon('trash',16)} Corbeille (${trash.length})</div><div class="mg-p">Elements recuperables pendant 90 jours.</div><div style="overflow:auto;max-height:500px"><table class="d8-tbl" style="margin:0"><thead><tr><th>Date</th><th>Nature</th><th>Q</th><th>Site</th><th>Par</th><th>Ago</th><th>Exp</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><button class="mg-addbtn" id="trash-empty-btn" style="background:var(--crimson);margin-top:9px">${icon('trash',13)} Vider</button>`;
+}
+const MG_RENDER={ops:mgOps,sups:mgSups,prod:mgProd,refs:mgRefs,data:mgData,audit:mgAudit,trash:mgTrash};
 function renderMgTab(tab){
   _mgTab=tab;
   document.querySelectorAll('#mgOverlay .mtab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
@@ -2112,6 +2263,10 @@ function wireMgTab(tab){
       if(!confirm('Vider le journal d\'audit pour tout le monde ? Cette action est irréversible.')) return;
       lsSet(LS.audit,[]); renderMgTab('audit'); toast('Journal d\'audit vidé');
     });
+  }
+  if(tab==='trash'){
+    document.querySelectorAll('[data-trash-restore]').forEach(b=>b.addEventListener('click',()=>restoreFromTrash(+b.dataset.trashRestore)));
+    $('trash-empty-btn')?.addEventListener('click',()=>{if(confirm('Vider definitiement ?')){lsSet(LS.trash,[]); renderMgTab('trash'); toast('Corbeille videe');}});
   }
 }
 
@@ -3254,9 +3409,12 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
         db.ref('cockpit/'+key).on('value', snap=>{
           const val = snap.val();
           if(val===null){
-            // cloud encore vide pour cette clé → on l'amorce depuis le local (migration une fois)
-            const raw = localStorage.getItem(key);
-            if(raw && raw!=='null' && raw!=='[]' && raw!=='{}'){ try{ db.ref('cockpit/'+key).set(JSON.parse(raw)); }catch(e){} }
+            // Le cloud fait AUTORITÉ : s'il est vide pour cette clé, on vide AUSSI le local.
+            // On NE ré-uploade JAMAIS le local vers le cloud. C'est ce ré-upload automatique
+            // (ancienne "migration") qui faisait revenir les données — même après une suppression
+            // via la console Firebase : l'app rouverte réécrivait aussitôt le cloud.
+            const raw=localStorage.getItem(key);
+            if(raw && raw!=='null' && raw!=='[]' && raw!=='{}'){ applyRemote(key, /^\s*\{/.test(raw)?{}:[]); }
             return;
           }
           if(JSON.stringify(val)===localStorage.getItem(key)) return; // inchangé / écho de notre propre écriture

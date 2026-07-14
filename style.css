@@ -330,6 +330,8 @@ body{min-height:100vh}
 .tsearch:focus{border-color:var(--accent)}
 .tbtn{padding:8px 13px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);color:var(--mid);font-size:12.5px;cursor:pointer;font-weight:500}
 .tbtn:hover{color:var(--hi);border-color:var(--accent)}
+.tbtn.danger{color:var(--crimson);border-color:color-mix(in srgb,var(--crimson) 45%,transparent)}
+.tbtn.danger:hover{background:var(--crimson);border-color:var(--crimson);color:#fff}
 .tblwrap{overflow:auto;max-height:460px;border:1px solid var(--line);border-radius:10px;margin-top:13px}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 thead th{position:sticky;top:0;background:var(--pop-bg);color:var(--mid);text-align:left;padding:10px 12px;font-weight:600;
