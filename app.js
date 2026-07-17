@@ -133,7 +133,7 @@ const LS = {
   nat:'lwsq_natures_v1', fam:'lwsq_families_v1', tools:'lwsq_tools_v1', theme:'lwsq_theme_v1',
   cat:'lwsq_natcat_v1', prod:'lwsq_prod_v1', ppmtgt:'lwsq_ppmtgt_v1', scraptgt:'lwsq_scraptgt_v1', prodm:'lwsq_prodm_v1', prodcao:'lwsq_prodcao_v1', machtype:'lwsq_machtype_v1', driftsig:'lwsq_driftsig_v1',
   edits:'lwsq_rowedits_v1', roleperms:'lwsq_roleperms_v1', tablet:'lwsq_tablet_v1', audit:'lwsq_audit_v1',
-  d8archive:'lwsq_d8archive_v1', trash:'lwsq_trash_v1'
+  d8archive:'lwsq_d8archive_v1', trash:'lwsq_trash_v1', qrqc:'lwsq_qrqc_v1'
 };
 /* Journal d'audit : libellé humain par clé partagée — sert à savoir QUI a touché
    QUELLE section QUAND (traçabilité), sans avoir à diffuser le détail de chaque champ. */
@@ -143,7 +143,8 @@ const AUDIT_LABELS = {
   [LS.cat]:'Classification (source défaut)', [LS.prod]:'Production (saisie)', [LS.ppmtgt]:'Cible PPM',
   [LS.scraptgt]:'Cible scrap', [LS.prodm]:'Production mensuelle', [LS.prodcao]:'Production CAO',
   [LS.machtype]:'Type de machine', [LS.driftsig]:'Seuil de dérive (SPC)', [LS.edits]:'Correction de ligne',
-  [LS.roleperms]:'Permissions par rôle', [LS.d8archive]:'Archive 8D', [LS.trash]:'Corbeille (réclamations supprimées)'
+  [LS.roleperms]:'Permissions par rôle', [LS.d8archive]:'Archive 8D', [LS.trash]:'Corbeille (réclamations supprimées)',
+  [LS.qrqc]:'Archive QRQC'
 };
 function auditWho(){
   try{
@@ -2839,6 +2840,80 @@ document.getElementById('mgImportFile').addEventListener('change',e=>{ if(e.targ
 document.getElementById('mgReset').addEventListener('click',resetDB);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && mgOverlay.classList.contains('show')) closeMg(); });
 
+/* ================= ARCHIVE QRQC (fiches scannées) ================= */
+let QRQC = lsGet(LS.qrqc, []);
+/* compresse une image en JPEG dataURL (max ~1200 px) pour un stockage/synchro léger */
+function qrqcCompress(file){
+  return new Promise((resolve,reject)=>{
+    const rd=new FileReader();
+    rd.onerror=()=>reject(new Error('read'));
+    rd.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('img'));
+      img.onload=()=>{
+        const MAX=1200; let w=img.naturalWidth||img.width||1, h=img.naturalHeight||img.height||1;
+        const s=Math.min(1, MAX/Math.max(w,h)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        try{ resolve(cv.toDataURL('image/jpeg',0.62)); }catch(err){ reject(err); }
+      };
+      img.src=rd.result;
+    };
+    rd.readAsDataURL(file);
+  });
+}
+function qrqcSave(){ lsSet(LS.qrqc, QRQC); }
+async function qrqcAddFile(file){
+  if(!file) return;
+  if(!/^image\//.test(file.type||'')){ toast('Choisis une image (photo / scan)',true); return; }
+  toast('Traitement de l’image…');
+  let img;
+  try{ img=await qrqcCompress(file); }catch(e){ toast('Image illisible',true); return; }
+  const title=(prompt('Titre / référence de la fiche QRQC :','QRQC '+todayLocal())||'').trim() || ('QRQC '+todayLocal());
+  QRQC.push({ id:'q'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, d:todayLocal(), img, ts:Date.now(), who:(typeof auditWho==='function'?auditWho():'') });
+  qrqcSave(); renderQRQC();
+  toast('Fiche QRQC ajoutée'+(window._fbReady?' · synchronisée ✓':''));
+}
+function qrqcDelete(id){
+  const it=QRQC.find(x=>x.id===id); if(!it) return;
+  if(!confirm('Supprimer cette fiche QRQC ?\n\n'+(it.title||''))) return;
+  QRQC=QRQC.filter(x=>x.id!==id); qrqcSave(); renderQRQC();
+  toast('Fiche QRQC supprimée');
+}
+function qrqcView(id){
+  const it=QRQC.find(x=>x.id===id); if(!it) return;
+  const lb=document.getElementById('qrqcLb'), im=document.getElementById('qrqcLbImg'), cap=document.getElementById('qrqcLbCap');
+  if(im) im.src=it.img||''; if(cap) cap.textContent=(it.title||'')+' · '+(it.d||''); if(lb) lb.classList.add('show');
+}
+function renderQRQC(){
+  const g=document.getElementById('qrqcGrid'); if(!g) return;
+  const empty=document.getElementById('qrqcEmpty'), cnt=document.getElementById('qrqcCount');
+  const list=[...QRQC].sort((a,b)=>(b.ts||0)-(a.ts||0));
+  if(cnt) cnt.textContent=list.length?(list.length+' fiche'+(list.length>1?'s':'')):'';
+  if(empty) empty.style.display=list.length?'none':'block';
+  g.innerHTML=list.map(it=>`
+    <div class="qrqc-card" data-qv="${it.id}">
+      <img class="qrqc-thumb" src="${it.img||''}" alt="${esc(it.title||'QRQC')}" loading="lazy">
+      <div class="qrqc-meta"><div class="qrqc-t">${esc(it.title||'QRQC')}</div><div class="qrqc-d">${esc(it.d||'')}</div></div>
+      <button class="qrqc-del" data-qd="${it.id}" title="Supprimer" aria-label="Supprimer la fiche">${icon('trash',13)}</button>
+    </div>`).join('');
+  g.querySelectorAll('[data-qv]').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('[data-qd]')) return; qrqcView(el.dataset.qv); }));
+  g.querySelectorAll('[data-qd]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); qrqcDelete(b.dataset.qd); }));
+}
+(function(){
+  const ov=document.getElementById('qrqcOverlay'), op=document.getElementById('openQrqc');
+  const add=document.getElementById('qrqcAdd'), fi=document.getElementById('qrqcFile'), cl=document.getElementById('qrqcClose');
+  if(op&&ov) op.addEventListener('click',()=>{ ov.classList.add('show'); renderQRQC(); });
+  if(cl&&ov) cl.addEventListener('click',()=>ov.classList.remove('show'));
+  if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) ov.classList.remove('show'); });
+  if(add&&fi) add.addEventListener('click',()=>fi.click());
+  if(fi) fi.addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; if(f) qrqcAddFile(f); });
+  const lb=document.getElementById('qrqcLb'), lbx=document.getElementById('qrqcLbX');
+  if(lbx&&lb) lbx.addEventListener('click',()=>lb.classList.remove('show'));
+  if(lb) lb.addEventListener('click',e=>{ if(e.target===lb) lb.classList.remove('show'); });
+  document.addEventListener('keydown',e=>{ if(e.key!=='Escape') return; if(lb&&lb.classList.contains('show')) lb.classList.remove('show'); else if(ov&&ov.classList.contains('show')) ov.classList.remove('show'); });
+})();
+
 /* ---- THEME TOGGLE (sombre / clair) ---- */
 let curTheme='dark';
 function applyTheme(t){
@@ -3357,7 +3432,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     measurementId: "G-PFYPG23JY2"
   };
   // Clés répliquées vers le cloud (le thème reste propre à chaque poste)
-  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms, LS.audit, LS.d8archive];
+  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms, LS.audit, LS.d8archive, LS.qrqc];
   window._FB_SYNCKEYS = new Set(FB_KEYS);
 
   const $f = id => document.getElementById(id);
@@ -3392,6 +3467,11 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     }
     if(key===LS.d8archive){
       try{ renderD8Trend(); }catch(e){}
+      return;
+    }
+    if(key===LS.qrqc){
+      QRQC = toArr(val);
+      try{ renderQRQC(); }catch(e){}
       return;
     }
     switch(key){

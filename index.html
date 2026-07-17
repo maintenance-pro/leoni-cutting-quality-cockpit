@@ -20,8 +20,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<link rel="stylesheet" href="theme.css?v=20260715g">
-<link rel="stylesheet" href="style.css?v=20260715g">
+<link rel="stylesheet" href="theme.css?v=20260715h">
+<link rel="stylesheet" href="style.css?v=20260715h">
 </head>
 <body>
 <!-- ========== ÉCRAN DE CONNEXION SÉCURISÉ (Firebase Auth) ========== -->
@@ -237,6 +237,7 @@
       <div class="ab-right">
         <button class="mgbtn-open" id="nokBtn3" style="background:linear-gradient(135deg,var(--brand,#0033A0),var(--accent-2,#22d3ee));color:#fff;border:none;font-weight:700"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><line x1="5" y1="19" x2="5" y2="12"/><line x1="12" y1="19" x2="12" y2="7"/><line x1="19" y1="19" x2="19" y2="14"/><line x1="3" y1="19" x2="21" y2="19"/></svg> Pareto NOK</button>
         <button class="mgbtn-open" id="openMg"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.3"/><line x1="19.2" y1="12" x2="21.6" y2="12"/><line x1="17.1" y1="17.1" x2="18.8" y2="18.8"/><line x1="12" y1="19.2" x2="12" y2="21.6"/><line x1="6.9" y1="17.1" x2="5.2" y2="18.8"/><line x1="4.8" y1="12" x2="2.4" y2="12"/><line x1="6.9" y1="6.9" x2="5.2" y2="5.2"/><line x1="12" y1="4.8" x2="12" y2="2.4"/><line x1="17.1" y1="6.9" x2="18.8" y2="5.2"/></svg> Gestion</button>
+        <button class="mgbtn-open" id="openQrqc" title="Archive des fiches QRQC scannées"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H7"/><path d="M17 4h1.5A1.5 1.5 0 0 1 20 5.5V7"/><path d="M20 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17"/><path d="M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17"/><line x1="4" y1="12" x2="20" y2="12"/></svg> QRQC</button>
         <button class="mgbtn-open" id="printReport"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="15.5" x2="16" y2="15.5"/><line x1="8" y1="9" x2="11" y2="9"/></svg> Rapport</button>
         <button class="mgbtn-open" id="emailReport" title="Préparer un e-mail avec la synthèse de la sélection courante"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/></svg> E-mail</button>
         <button class="d8btn" id="open8D" style="display:none"><svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><line x1="8.5" y1="10" x2="15.5" y2="10"/><line x1="8.5" y1="13.5" x2="15.5" y2="13.5"/><line x1="8.5" y1="17" x2="13" y2="17"/></svg> Atelier 8D</button>
@@ -774,6 +775,26 @@
 </div>
 
 <!-- ============ GESTION OVERLAY ============ -->
+<!-- ============ ARCHIVE QRQC ============ -->
+<div class="d8-overlay" id="qrqcOverlay">
+  <div class="d8-toolbar">
+    <div class="ttl"><span class="b">LEONI</span> · Archive QRQC</div>
+    <input type="file" id="qrqcFile" accept="image/*" capture="environment" style="display:none">
+    <button class="d8-tbtn go" id="qrqcAdd"><svg class="ic-svg" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H7"/><path d="M17 4h1.5A1.5 1.5 0 0 1 20 5.5V7"/><path d="M20 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17"/><path d="M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17"/><line x1="4" y1="12" x2="20" y2="12"/></svg> Scanner / Ajouter</button>
+    <span class="qrqc-count" id="qrqcCount"></span>
+    <button class="d8-tbtn x" id="qrqcClose" style="margin-left:auto"><svg class="ic-svg" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Fermer</button>
+  </div>
+  <div class="d8-doc">
+    <div class="qrqc-hint">Archive des fiches <b>QRQC</b> scannées. Clique « Scanner / Ajouter » pour prendre une photo (mobile) ou importer une image — elle est compressée puis synchronisée pour toute l'équipe.</div>
+    <div class="qrqc-empty" id="qrqcEmpty">Aucune fiche QRQC pour l'instant.</div>
+    <div class="qrqc-grid" id="qrqcGrid"></div>
+  </div>
+</div>
+<div class="qrqc-lb" id="qrqcLb">
+  <button class="qrqc-lb-x" id="qrqcLbX" aria-label="Fermer"><svg class="ic-svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+  <img id="qrqcLbImg" alt="Fiche QRQC">
+  <div class="qrqc-lb-cap" id="qrqcLbCap"></div>
+</div>
 <div class="d8-overlay" id="mgOverlay">
   <div class="d8-toolbar">
     <div class="ttl"><span class="b">LEONI</span> · Gestion &amp; paramètres</div>
@@ -800,6 +821,6 @@
 <!-- toast -->
 <div class="toast" id="toast"><span class="ti"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4.5,12.5 9.5,17.5 19.5,6.5"/></svg></span><span id="toastMsg"></span></div>
 
-<script src="app.js?v=20260715g"></script>
+<script src="app.js?v=20260715h"></script>
 </body>
 </html>
