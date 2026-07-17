@@ -1301,8 +1301,8 @@ function isoWeek(d){
 }
 
 const modalBk=document.getElementById('modalBk');
-const F_IDS=['f-date','f-qty','f-shift','f-site','f-proj','f-team','f-mach','f-tool','f-outils','f-cx','f-op','f-sup','f-pc','f-nat','f-fam'];
-const F_LABELS={'f-date':'Date','f-qty':'Quantité (>0)','f-shift':'Shift','f-site':'Site','f-proj':'Client','f-team':'Équipe','f-mach':'Machine','f-tool':'Fournisseur outils','f-outils':"Nom d'outil",'f-cx':'Connexion','f-op':'Opérateur','f-sup':'Superviseur','f-pc':'Problème (source)','f-nat':'Nature de défaut','f-fam':'Famille produit'};
+const F_IDS=['f-date','f-qty','f-site','f-proj','f-team','f-mach','f-tool','f-outils','f-cx','f-op','f-sup','f-pc','f-nat','f-fam'];
+const F_LABELS={'f-date':'Date','f-qty':'Quantité NOK (>0)','f-site':'Site','f-proj':'Client','f-team':'Équipe','f-mach':'Machine','f-tool':'Fournisseur outils','f-outils':"Nom d'outil",'f-cx':'Connexion','f-op':'Opérateur','f-sup':'Superviseur','f-pc':'Problème (source)','f-nat':'Nature de défaut','f-fam':'Famille produit'};
 function refreshFormSources(){
   fillDatalist('dl-site','si');fillDatalist('dl-team','eq');fillDatalist('dl-mach','ma');fillDatalist('dl-tool','to');
   fillToolDatalist();
@@ -1341,7 +1341,7 @@ function openModal(){
   refreshFormSources(); fillCaoDatalist();
   document.getElementById('f-date').value=todayLocal();
   ['f-qty','f-site','f-team','f-mach','f-tool','f-outils','f-cx','f-cao','f-good','f-pagoda','f-prc','f-mt','f-oud','f-out','f-rep','f-aql','f-nb'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  ['f-shift','f-proj','f-op','f-sup','f-pc','f-nat','f-fam'].forEach(id=>document.getElementById(id).value='');
+  ['f-proj','f-op','f-sup','f-pc','f-nat','f-fam'].forEach(id=>document.getElementById(id).value='');
   ['f-op-new','f-sup-new','f-nat-new','f-fam-new'].forEach(id=>{const e=document.getElementById(id);e.value='';e.style.display='none';e.classList.remove('bad');});
   F_IDS.forEach(id=>markBad(id,false));
   caoLookup();
@@ -2290,8 +2290,8 @@ async function importProdExcel(file){
       const hdr=rows[0].map(c=>String(c).toLowerCase().trim());
       const num=v=>{ if(typeof v==='number') return isFinite(v)?v:0; const n=parseFloat(String(v==null?'':v).replace(/[^\d.\-]/g,'')); return isNaN(n)?0:n; };
       // --- détection format MES coupe (Work Station / Good Parts / Quantity + date) ---
-      const wsCol  = hdr.findIndex(h=>/work ?station|poste de travail/.test(h));
-      const gpCol  = hdr.findIndex(h=>/good ?parts|pi[eè]ces bonnes|bonnes/.test(h));
+      const wsCol  = hdr.findIndex(h=>/work ?station|poste de travail|station de travail/.test(h));
+      const gpCol  = hdr.findIndex(h=>/good ?parts|bonne ?partie|pi[eè]ces bonnes|bonnes/.test(h));
       const qCol2  = hdr.findIndex(h=>/^quantity$|^quantit[eé]$|^qt[eé]$/.test(h));
       const endCol = hdr.findIndex(h=>/actual end|date de fin r|fin r[eé]elle/.test(h));
       const crCol  = hdr.findIndex(h=>/creation date|date de cr[eé]ation/.test(h));
@@ -2303,6 +2303,23 @@ async function importProdExcel(file){
       if(isMES){
         const qSrc = gpCol>=0 ? gpCol : qCol2;              // pcs produites = Good Parts (sinon Quantity)
         const dSrc = endCol>=0 ? endCol : (pendCol>=0?pendCol:crCol);
+        // Convention de date export MES/CAO : MM/JJ/AAAA (confirmée) ; bascule en JJ/MM
+        // uniquement si le fichier le prouve (un 1er nombre > 12) — jamais de dates fausses en silence.
+        let mesDMY=false;
+        if(dSrc>=0){ for(let k=1;k<rows.length;k++){ const rr=rows[k]; if(!rr) continue;
+          const v=rr[dSrc]; if(v==null||v===''||v instanceof Date) continue;
+          const mm=String(v).trim().split(/[ T]/)[0].match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+          if(mm && +mm[1]>12){ mesDMY=true; break; } } }
+        const parseMESDate=v=>{
+          if(v==null||v==='') return null;
+          if(v instanceof Date && !isNaN(v)) return ymdLocal(v);
+          const s=String(v).trim().split(/[ T]/)[0];
+          let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+          m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/); if(!m) return null;
+          const y=(m[3].length===2?('20'+m[3]):m[3]), mo=mesDMY?+m[2]:+m[1], da=mesDMY?+m[1]:+m[2];
+          if(mo<1||mo>12||da<1||da>31) return null;
+          return `${y}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
+        };
         const byDay=new Map(), byMach={}, caoMap={}; let usedQty=0, noDate=0;
         for(let i=1;i<rows.length;i++){
           const r=rows[i]; if(!r) continue;
@@ -2319,7 +2336,7 @@ async function importProdExcel(file){
           const q=num(r[qSrc]); if(q<=0) continue;
           usedQty+=q;
           if(wsCol>=0){ const w=String(r[wsCol]==null?'':r[wsCol]).trim(); if(w) byMach[w]=(byMach[w]||0)+q; }
-          const d= dSrc>=0 ? parseAnyDate(r[dSrc]) : null;
+          const d= dSrc>=0 ? parseMESDate(r[dSrc]) : null;
           if(d) byDay.set(d,(byDay.get(d)||0)+q); else noDate++;
         }
         // fusion production journalière (par date)
@@ -2332,8 +2349,8 @@ async function importProdExcel(file){
         const caoKeys=Object.keys(caoMap);
         if(caoKeys.length){ caoKeys.forEach(k=>PRODCAO[k]=caoMap[k]); lsSet(LS.prodcao,PRODCAO); }
         lsSet(LS.prod,PROD); render(); renderMgTab(_mgTab);
-        const src = gpCol>=0?'Good Parts':'Quantity';
-        toast(`Import production (par machine · ${src}) : ${fmt(usedQty)} pcs · ${byDay.size} jour(s) · ${mKeys.length} machine(s)`);
+        const src = String((rows[0]&&rows[0][qSrc])||(gpCol>=0?'Good Parts':'Quantity')).trim();
+        toast(`Import production (${src} · dates ${mesDMY?'JJ/MM':'MM/JJ'}) : ${fmt(usedQty)} pcs · ${byDay.size} jour(s) · ${mKeys.length} machine(s)${noDate?` · ⚠ ${noDate} ligne(s) sans date valide`:''}`);
         return;
       }
       // --- format simple : Date + Production ---

@@ -20,8 +20,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<link rel="stylesheet" href="theme.css?v=20260714e">
-<link rel="stylesheet" href="style.css?v=20260714e">
+<link rel="stylesheet" href="theme.css?v=20260714f">
+<link rel="stylesheet" href="style.css?v=20260714f">
 </head>
 <body>
 <!-- ========== ÉCRAN DE CONNEXION SÉCURISÉ (Firebase Auth) ========== -->
@@ -511,17 +511,8 @@
           <input type="date" id="f-date">
         </div>
         <div class="field">
-          <label for="f-qty">Quantité (pcs) <span class="req">*</span></label>
+          <label for="f-qty">Quantité (pcs NOK) <span class="req">*</span></label>
           <input type="number" id="f-qty" min="1" step="1" placeholder="ex. 250">
-        </div>
-        <div class="field">
-          <label for="f-shift">Shift <span class="req">*</span></label>
-          <select id="f-shift">
-            <option value="">— Choisir —</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-          </select>
         </div>
         <div class="field">
           <label for="f-site">Site de détection <span class="req">*</span></label>
@@ -548,7 +539,7 @@
         </div>
         <div class="field">
           <label for="f-outils">Nom d'outil <span class="req">*</span></label>
-          <input id="f-outils" list="dl-outils" placeholder="Nom / référence de l'outil">
+          <input id="f-outils" list="dl-outils" placeholder="ex: wz117c-01">
         </div>
         <div class="field">
           <label for="f-cx">Connexion <span class="req">*</span></label>
@@ -584,19 +575,10 @@
           <select id="f-fam"></select>
           <input id="f-fam-new" class="newinp" placeholder="Saisir la nouvelle famille produit" style="display:none">
         </div>
-        <div class="field full" style="margin-top:8px;padding-top:12px;border-top:1px dashed var(--line)">
-          <label style="color:var(--accent);letter-spacing:.06em">⊕ Compléments (optionnels — toutes les colonnes du registre)</label>
-        </div>
-        <div class="field" style="margin:0"><label for="f-prc">Process</label><input id="f-prc" placeholder="ex. COUPE"></div>
-        <div class="field" style="margin:0"><label for="f-mt">Type machine</label><input id="f-mt" placeholder="ex. CC64 / K355 (auto si vide)"></div>
-        <div class="field" style="margin:0"><label for="f-oud">Description outil</label><input id="f-oud" placeholder="ex. applicateur / matrice"></div>
-        <div class="field" style="margin:0"><label for="f-out">Type d'outil</label><input id="f-out" placeholder="ex. sertissage / dénudage"></div>
-        <div class="field" style="margin:0"><label for="f-rep">Repère</label><input id="f-rep" placeholder="ex. WZ8242J-R02"></div>
-        <div class="field" style="margin:0"><label for="f-aql">AQL</label><input id="f-aql" placeholder="ex. niveau / valeur AQL"></div>
-        <div class="field" style="margin:0"><label for="f-nb">NB</label><input id="f-nb" placeholder="ex. nombre"></div>
+        <div class="field full" style="margin-top:8px;padding-top:12px;border-top:1px dashed var(--line)"><label for="f-aql">AQL</label><input id="f-aql" placeholder="ex. niveau / valeur AQL"></div>
       </div>
       <div class="modal-note">
-        <svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12" y2="7.61"/></svg> <b>Semaine</b>, <b>mois</b> et <b>année</b> sont calculés depuis la date. <b>Les champs marqués <span class="req">*</span> sont obligatoires ; les compléments en bas de formulaire sont optionnels.</b> La réclamation est ajoutée au registre, <b>enregistrée localement</b> (localStorage) et persiste au rafraîchissement — sur GitHub Pages, elle reste tant que le navigateur n'est pas vidé. Pense à <b>exporter la sauvegarde JSON</b> (⚙️ Gestion → Données) pour archiver.
+        <svg class="ic-svg" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12" y2="7.61"/></svg> <b>Semaine</b>, <b>mois</b> et <b>année</b> sont calculés depuis la date. <b>Les champs marqués <span class="req">*</span> sont obligatoires.</b> La réclamation est ajoutée au registre, <b>enregistrée localement</b> (localStorage) et persiste au rafraîchissement — sur GitHub Pages, elle reste tant que le navigateur n'est pas vidé. Pense à <b>exporter la sauvegarde JSON</b> (⚙️ Gestion → Données) pour archiver.
       </div>
     </div>
     <div class="modal-f">
@@ -822,6 +804,6 @@
 <!-- toast -->
 <div class="toast" id="toast"><span class="ti"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4.5,12.5 9.5,17.5 19.5,6.5"/></svg></span><span id="toastMsg"></span></div>
 
-<script src="app.js?v=20260714e"></script>
+<script src="app.js?v=20260715b"></script>
 </body>
 </html>
