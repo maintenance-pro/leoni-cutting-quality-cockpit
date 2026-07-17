@@ -2863,14 +2863,27 @@ function qrqcCompress(file){
   });
 }
 function qrqcSave(){ lsSet(LS.qrqc, QRQC); }
+function qrqcReadDataURL(file){
+  return new Promise((resolve,reject)=>{ const rd=new FileReader(); rd.onerror=()=>reject(new Error('read')); rd.onload=()=>resolve(rd.result); rd.readAsDataURL(file); });
+}
 async function qrqcAddFile(file){
   if(!file) return;
-  if(!/^image\//.test(file.type||'')){ toast('Choisis une image (photo / scan)',true); return; }
-  toast('Traitement de l’image…');
-  let img;
-  try{ img=await qrqcCompress(file); }catch(e){ toast('Image illisible',true); return; }
+  const isImg=/^image\//.test(file.type||'');
+  const isPdf=/pdf/i.test(file.type||'')||/\.pdf$/i.test(file.name||'');
+  if(!isImg && !isPdf){ toast('Choisis une image ou un PDF',true); return; }
+  let img, kind;
+  if(isImg){
+    toast('Traitement de l’image…');
+    try{ img=await qrqcCompress(file); }catch(e){ toast('Image illisible',true); return; }
+    kind='image';
+  } else {
+    if(file.size > 4*1024*1024){ toast('PDF trop volumineux (max 4 Mo) — réduis-le ou scanne en image',true); return; }
+    toast('Lecture du PDF…');
+    try{ img=await qrqcReadDataURL(file); }catch(e){ toast('PDF illisible',true); return; }
+    kind='pdf';
+  }
   const title=(prompt('Titre / référence de la fiche QRQC :','QRQC '+todayLocal())||'').trim() || ('QRQC '+todayLocal());
-  QRQC.push({ id:'q'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, d:todayLocal(), img, ts:Date.now(), who:(typeof auditWho==='function'?auditWho():'') });
+  QRQC.push({ id:'q'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, d:todayLocal(), img, kind, ts:Date.now(), who:(typeof auditWho==='function'?auditWho():'') });
   qrqcSave(); renderQRQC();
   toast('Fiche QRQC ajoutée'+(window._fbReady?' · synchronisée ✓':''));
 }
@@ -2882,6 +2895,16 @@ function qrqcDelete(id){
 }
 function qrqcView(id){
   const it=QRQC.find(x=>x.id===id); if(!it) return;
+  if(it.kind==='pdf'){
+    // PDF : ouverture dans un nouvel onglet via un blob (plus fiable qu'un dataURL)
+    try{
+      const b64=String(it.img||'').split(',')[1]||''; const bin=atob(b64); const arr=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+      const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+      window.open(url,'_blank'); setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){ try{ window.open(it.img,'_blank'); }catch(_){} }
+    return;
+  }
   const lb=document.getElementById('qrqcLb'), im=document.getElementById('qrqcLbImg'), cap=document.getElementById('qrqcLbCap');
   if(im) im.src=it.img||''; if(cap) cap.textContent=(it.title||'')+' · '+(it.d||''); if(lb) lb.classList.add('show');
 }
@@ -2891,12 +2914,17 @@ function renderQRQC(){
   const list=[...QRQC].sort((a,b)=>(b.ts||0)-(a.ts||0));
   if(cnt) cnt.textContent=list.length?(list.length+' fiche'+(list.length>1?'s':'')):'';
   if(empty) empty.style.display=list.length?'none':'block';
-  g.innerHTML=list.map(it=>`
+  g.innerHTML=list.map(it=>{
+    const thumb = it.kind==='pdf'
+      ? `<div class="qrqc-thumb qrqc-pdf"><svg class="ic-svg" width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/></svg><span>PDF</span></div>`
+      : `<img class="qrqc-thumb" src="${it.img||''}" alt="${esc(it.title||'QRQC')}" loading="lazy">`;
+    return `
     <div class="qrqc-card" data-qv="${it.id}">
-      <img class="qrqc-thumb" src="${it.img||''}" alt="${esc(it.title||'QRQC')}" loading="lazy">
-      <div class="qrqc-meta"><div class="qrqc-t">${esc(it.title||'QRQC')}</div><div class="qrqc-d">${esc(it.d||'')}</div></div>
+      ${thumb}
+      <div class="qrqc-meta"><div class="qrqc-t">${esc(it.title||'QRQC')}</div><div class="qrqc-d">${esc(it.d||'')}${it.kind==='pdf'?' · PDF':''}</div></div>
       <button class="qrqc-del" data-qd="${it.id}" title="Supprimer" aria-label="Supprimer la fiche">${icon('trash',13)}</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   g.querySelectorAll('[data-qv]').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('[data-qd]')) return; qrqcView(el.dataset.qv); }));
   g.querySelectorAll('[data-qd]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); qrqcDelete(b.dataset.qd); }));
 }

@@ -340,6 +340,8 @@ body{min-height:100vh}
 .qrqc-card{position:relative;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;overflow:hidden;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}
 .qrqc-card:hover{border-color:var(--accent);box-shadow:var(--shadow);transform:translateY(-2px)}
 .qrqc-thumb{display:block;width:100%;height:150px;object-fit:cover;background:var(--input-bg)}
+.qrqc-pdf{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--crimson);background:color-mix(in srgb,var(--crimson) 9%,var(--input-bg))}
+.qrqc-pdf span{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--mid)}
 .qrqc-meta{padding:9px 11px}
 .qrqc-t{font-weight:600;font-size:12.5px;color:var(--hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qrqc-d{font-size:11px;color:var(--dim);margin-top:2px}

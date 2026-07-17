@@ -6,7 +6,7 @@
    - Ne touche PAS aux connexions Firebase temps réel (auth + base).
    Déposer ce fichier À CÔTÉ de index.html (même dossier) sur GitHub Pages.
    ============================================================ */
-const CACHE = 'qcockpit-v16';
+const CACHE = 'qcockpit-v17';
 const CDN = ['cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.gstatic.com', 'fonts.googleapis.com'];
 
 // Installation : on précharge la coquille de l'app
