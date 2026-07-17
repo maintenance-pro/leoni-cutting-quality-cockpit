@@ -397,6 +397,20 @@ function ppmForKey(key){
   if(def==null) return null;   // production saisie mais aucun défaut enregistré ces jours-là
   return Math.round(def/prod*1e6);
 }
+/* PPM pour un préfixe de date : jour (AAAA-MM-JJ), mois (AAAA-MM) ou année (AAAA).
+   = défauts ÷ production sur les jours (de cette période) où de la production est saisie. */
+function ppmForPrefix(prefix){
+  if(!prefix) return null;
+  const L=prefix.length;
+  const days=new Set(PROD.filter(p=>(+p.q)>0 && (p.d||'').slice(0,L)===prefix).map(p=>p.d));
+  if(!days.size) return null;
+  let prod=0; PROD.forEach(p=>{ if(days.has(p.d)) prod+=(+p.q||0); });
+  if(prod<=0) return null;
+  let def=0, has=false;
+  realRows().forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
+  if(!has) return null;
+  return Math.round(def/prod*1e6);
+}
 
 function rowsFilteredExcept(exceptKey){
   return DATA.rows.filter(r=>{
@@ -503,6 +517,7 @@ const baseOpts=(extra={})=>Object.assign({
 },extra);
 
 let _trendG='w';
+let _ppmG='m';   // granularité du graphe PPM : 'd' jour · 'm' mois · 'y' année
 function initCharts(){
   C = themeC();
   Chart.defaults.color = tc('--chart-tick');
@@ -768,18 +783,32 @@ function render(){
 
   // PPM line — File 2 (Jan..Mai) + tout mois supplémentaire avec production saisie
   const MLAB=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-  const baseKeys=DATA.ppm.months.map((_,i)=>`${PPM_YEAR}-${String(i+1).padStart(2,'0')}`);
+  // Axe PPM selon la granularité choisie (_ppmG) : jour / mois / année.
+  const _RRppm=realRows();
   const pmMap=prodByMonth();
-  const extraKeys=[...pmMap.keys()].filter(k=>!baseKeys.includes(k) && ppmForKey(k)!=null).sort();
-  const allKeys=[...baseKeys,...extraKeys];
-  const keyLabel=k=>{const [y,m]=k.split('-');return (MLAB[+m]||k)+(y!==PPM_YEAR?" '"+y.slice(2):'');};
+  let allKeys, keyLabel, _ppmTitle;
+  if(_ppmG==='d'){
+    allKeys=[...new Set(_RRppm.map(r=>r.d).filter(Boolean))].sort();
+    if(allKeys.length>60) allKeys=allKeys.slice(-60);
+    keyLabel=k=>{const p=String(k).split('-'); return p.length===3?p[2]+'/'+p[1]:k;};
+    _ppmTitle='PPM par jour vs cible';
+  } else if(_ppmG==='y'){
+    allKeys=[...new Set(_RRppm.map(r=>(r.d||'').slice(0,4)).filter(Boolean))].sort();
+    keyLabel=k=>k;
+    _ppmTitle='PPM par année vs cible';
+  } else {
+    allKeys=[...new Set(_RRppm.map(r=>(r.d||'').slice(0,7)).filter(Boolean))].sort();
+    keyLabel=k=>{const [y,m]=k.split('-'); return (MLAB[+m]||k)+" '"+String(y).slice(2);};
+    _ppmTitle='PPM par mois vs cible';
+  }
+  { const _pt=document.getElementById('ppm-title'); if(_pt) _pt.textContent=_ppmTitle; }
   charts.ppm.data.labels=allKeys.map(keyLabel);
   // PPM réel (File 2) : valeurs sur les mois de base, null au-delà
   // Ligne « PPM réel (File 2) » = données de démonstration → retirée.
   // Le PPM affiché provient uniquement des vraies données (ppmCalc = défauts ÷ production saisie).
   const ppmReal=allKeys.map(()=>null);
-  // PPM calculé depuis la production saisie (défauts ÷ production) sur tous les mois
-  const ppmCalc=allKeys.map(k=>ppmForKey(k));
+  // PPM = défauts ÷ production sur les mêmes jours, pour chaque période de l'axe (jour/mois/année)
+  const ppmCalc=allKeys.map(k=>ppmForPrefix(k));
   // cible prolongée sur tout l'axe
   charts.ppm.data.datasets[2].data=allKeys.map(()=>tgt);
   charts.ppm.data.datasets[2].label='Cible '+tgt;
@@ -2951,6 +2980,12 @@ wireChartFilter('chWeek',  ()=>charts.week,  ()=>({d:'day',w:'week',m:'month'}[_
 (function(){ const seg=document.getElementById('wk-seg'); if(!seg) return;
   seg.addEventListener('click',e=>{ const b=e.target.closest('button[data-g]'); if(!b) return;
     _trendG=b.dataset.g; seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); renderTrendChart(applyFilters());
+  });
+})();
+/* Bascule PPM : Jour / Mois / Année */
+(function(){ const seg=document.getElementById('ppm-seg'); if(!seg) return;
+  seg.addEventListener('click',e=>{ const b=e.target.closest('button[data-g]'); if(!b) return;
+    _ppmG=b.dataset.g; seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); render();
   });
 })();
 /* Fenêtre Pareto NOK — dashboard intégré (iframe isolée, base64, aucun fichier externe) */
