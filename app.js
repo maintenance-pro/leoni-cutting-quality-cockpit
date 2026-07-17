@@ -972,22 +972,7 @@ function render(){
     else _scSub.innerHTML=`${fmt(scRsum)} pcs rebutées vs cible ${fmt(scTsum)} <span style="color:var(--violet)">(perso)</span> · <span class="delta ${scPct<=0?'down':'up'}">${icon(scPct<=0?'chevronDown':'chevronUp',11)} ${Math.abs(scPct)}% ${scPct<=0?'sous cible':'au-dessus'}</span>`;
   }
 
-  // défauts par shift (réclamations avec shift renseigné)
-  const shRows=fr.filter(r=>r.sh && !BAD_VALS.includes(r.sh));
-  const shBox=document.getElementById('shiftBox');
-  if(!shRows.length){
-    shBox.innerHTML=`<div class="shift-empty">Aucune donnée de shift pour l'instant.<br>Les défauts par shift apparaîtront ici dès que des réclamations seront saisies avec le <b>shift renseigné</b> (A / B / C).</div>`;
-    document.getElementById('shift-sub').textContent='en attente de saisie';
-  }else{
-    const shAgg=sumBy(shRows,'sh').sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'fr'));
-    const shMax=Math.max(...shAgg.map(([,v])=>v),1), shTot=shAgg.reduce((a,[,v])=>a+v,0);
-    shBox.innerHTML=shAgg.map(([s,v])=>`
-      <div class="shift-row">
-        <div class="shift-lbl">${esc(s)}<small>${shTot?Math.round(v/shTot*100):0}% des défauts</small></div>
-        <div class="shift-track"><div class="shift-fill" style="width:${Math.max(v/shMax*100,3)}%"></div></div>
-        <div class="shift-val">${fmt(v)}</div></div>`).join('');
-    document.getElementById('shift-sub').textContent=`${fmt(shRows.length)} réclamation(s) · ${fmt(shTot)} pcs`;
-  }
+  // Panneau « Défauts par shift » retiré (champ SHIFT supprimé du formulaire).
 
   renderHeatmap(fr);
   renderCompare(fr);
