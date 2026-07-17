@@ -481,6 +481,9 @@ document.addEventListener('click',e=>{ if(!e.target.closest('.fbtn')) document.q
 function buildOptions(d){
   const base=rowsFilteredExcept(d.key);
   const opts=distinctCounts(d.field, base);
+  // Dimensions temporelles (année / mois / semaine) : ordre chronologique croissant.
+  // Les autres restent triées par nombre décroissant (plus impactant en premier).
+  if(d.key==='year'||d.key==='month'||d.key==='week') opts.sort((a,b)=>(+a[0]||0)-(+b[0]||0));
   const q=(d._search.value||'').toLowerCase();
   d._list.innerHTML='';
   opts.filter(([v])=>String(d.fmt(v)).toLowerCase().includes(q)).slice(0,300).forEach(([v,c])=>{
