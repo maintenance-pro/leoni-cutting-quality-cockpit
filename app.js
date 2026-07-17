@@ -742,14 +742,17 @@ function render(){
   const machines=new Set(fr.map(r=>r.ma)).size;
   const natTop=sumBy(fr,'na')[0];
   const tgt=DATA.ppm.ppmTarget;
-  // PPM global recalculé sur les VRAIES données : total défauts ÷ total production saisie.
-  const _totProd=PROD.reduce((a,p)=>a+(+p.q||0),0);
-  const _totDef=realRows().reduce((a,r)=>a+(+r.q||0),0);
+  // PPM qui SUIT LES FILTRES : défauts de la sélection ÷ production sur ces mêmes jours.
+  const _selDays=new Set(fr.map(r=>r.d).filter(Boolean));
+  let _totProd=0; PROD.forEach(p=>{ if(_selDays.has(p.d)) _totProd+=(+p.q||0); });
+  const _totDef=fr.reduce((a,r)=>a+(+r.q||0),0);
   const ppmG=_totProd>0?Math.round(_totDef/_totProd*1e6):null;
   const ppmState=ppmG==null?'na':(ppmG>tgt?'bad':'ok');
   const MFR=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
-  const _pmin=DATA.meta.dmin?+DATA.meta.dmin.slice(5,7):0, _pmax=DATA.meta.dmax?+DATA.meta.dmax.slice(5,7):0;
+  const _selDates=[..._selDays].sort();
+  const _pmin=_selDates.length?+_selDates[0].slice(5,7):0, _pmax=_selDates.length?+_selDates[_selDates.length-1].slice(5,7):0;
   const _ppmPeriod=(_pmin&&_pmax)?` (${MFR[_pmin]}${_pmin!==_pmax?'–'+MFR[_pmax]:''})`:'';
+  const _ppmFiltered=DIMS.some(d=>filters[d.key].size);
   updatePPMAlert(ppmG,tgt,ppmState==='bad');
   // séries hebdo (sparkline + tendance)
   const wkPairs=[...sumBy(fr,'w')].sort((a,b)=>a[0]-b[0]);
@@ -760,7 +763,7 @@ function render(){
   const kp=[
     {c:'k-crim',ic:'alertTriangle',l:'Événements défaut',n:events,v:fmt(events),u:'',s:`base terrain · ${(DATA.meta.dmin||'—').slice(0,7)} → ${(DATA.meta.dmax||'—').slice(0,7)} ${deltaBadge(evDelta,true)}`},
     {c:'k-crim',ic:'box',l:'Quantité défaut totale',n:qty,v:fmt(qty),u:'pcs',s:`moy. ${fmt(avg)} pcs / événement ${deltaBadge(qtyDelta,true)}`,extra:sparkSVG(wkQty,C.crimson)},
-    {c:ppmState==='bad'?'k-amb':'k-grn',ic:'target',l:'PPM global'+_ppmPeriod,n:ppmG||0,v:ppmG==null?'—':fmt(ppmG),u:ppmG==null?'':'ppm',
+    {c:ppmState==='bad'?'k-amb':'k-grn',ic:'target',l:(_ppmFiltered?'PPM sélection':'PPM global')+_ppmPeriod,n:ppmG||0,v:ppmG==null?'—':fmt(ppmG),u:ppmG==null?'':'ppm',
       s:ppmG==null?`saisis la production (Gestion → Données) pour calculer le PPM · cible ${fmt(tgt)}`:`<span class="pill ${ppmState}">${icon(ppmState==='bad'?'chevronUp':'chevronDown',11)} ${ppmState==='bad'?'> cible':'≤ cible'}</span> cible ${fmt(tgt)}`},
     {c:'k-grn',ic:'factory',l:'Sites actifs',n:sites,v:sites,u:'',s:_totProd>0?`production saisie : ${fmt(_totProd)} pcs`:`production non saisie`},
     {c:'k-vio',ic:'wrench',l:'Machines impactées',n:machines,v:machines,u:'',s:`sur la sélection courante`},
