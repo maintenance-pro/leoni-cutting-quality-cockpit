@@ -411,6 +411,21 @@ function ppmForPrefix(prefix){
   if(!has) return null;
   return Math.round(def/prod*1e6);
 }
+/* PPM pour une semaine ISO (clé « AAAA-Wss ») : défauts ÷ production sur les jours de
+   cette semaine où de la production est saisie. (la semaine n'est pas un préfixe de date) */
+function ppmForWeekKey(key){
+  const m=/^(\d{4})-W(\d{1,2})$/.exec(String(key)); if(!m) return null;
+  const y=+m[1], w=+m[2];
+  const days=new Set();
+  PROD.forEach(p=>{ if((+p.q)<=0||!p.d) return; const dt=new Date(p.d+'T00:00:00'); if(!isNaN(dt) && dt.getFullYear()===y && isoWeek(dt)===w) days.add(p.d); });
+  if(!days.size) return null;
+  let prod=0; PROD.forEach(p=>{ if(days.has(p.d)) prod+=(+p.q||0); });
+  if(prod<=0) return null;
+  let def=0, has=false;
+  realRows().forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
+  if(!has) return null;
+  return Math.round(def/prod*1e6);
+}
 
 function rowsFilteredExcept(exceptKey){
   return DATA.rows.filter(r=>{
@@ -792,6 +807,10 @@ function render(){
     if(allKeys.length>60) allKeys=allKeys.slice(-60);
     keyLabel=k=>{const p=String(k).split('-'); return p.length===3?p[2]+'/'+p[1]:k;};
     _ppmTitle='PPM par jour vs cible';
+  } else if(_ppmG==='w'){
+    allKeys=[...new Set(_RRppm.filter(r=>r.y&&r.w).map(r=>r.y+'-W'+String(r.w).padStart(2,'0')))].sort();
+    keyLabel=k=>'S'+(+k.split('-W')[1]);
+    _ppmTitle='PPM par semaine vs cible';
   } else if(_ppmG==='y'){
     allKeys=[...new Set(_RRppm.map(r=>(r.d||'').slice(0,4)).filter(Boolean))].sort();
     keyLabel=k=>k;
@@ -808,7 +827,7 @@ function render(){
   // Le PPM affiché provient uniquement des vraies données (ppmCalc = défauts ÷ production saisie).
   const ppmReal=allKeys.map(()=>null);
   // PPM = défauts ÷ production sur les mêmes jours, pour chaque période de l'axe (jour/mois/année)
-  const ppmCalc=allKeys.map(k=>ppmForPrefix(k));
+  const ppmCalc=allKeys.map(k=> _ppmG==='w' ? ppmForWeekKey(k) : ppmForPrefix(k));
   // cible prolongée sur tout l'axe
   charts.ppm.data.datasets[2].data=allKeys.map(()=>tgt);
   charts.ppm.data.datasets[2].label='Cible '+tgt;
