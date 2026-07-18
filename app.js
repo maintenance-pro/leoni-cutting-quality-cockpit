@@ -400,7 +400,7 @@ function ppmForKey(key){
 }
 /* PPM pour un préfixe de date : jour (AAAA-MM-JJ), mois (AAAA-MM) ou année (AAAA).
    = défauts ÷ production sur les jours (de cette période) où de la production est saisie. */
-function ppmForPrefix(prefix){
+function ppmForPrefix(prefix, rows){
   if(!prefix) return null;
   const L=prefix.length;
   const days=new Set(PROD.filter(p=>(+p.q)>0 && (p.d||'').slice(0,L)===prefix).map(p=>p.d));
@@ -408,13 +408,13 @@ function ppmForPrefix(prefix){
   let prod=0; PROD.forEach(p=>{ if(days.has(p.d)) prod+=(+p.q||0); });
   if(prod<=0) return null;
   let def=0, has=false;
-  realRows().forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
+  (rows||realRows()).forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
   if(!has) return null;
   return Math.round(def/prod*1e6);
 }
 /* PPM pour une semaine ISO (clé « AAAA-Wss ») : défauts ÷ production sur les jours de
    cette semaine où de la production est saisie. (la semaine n'est pas un préfixe de date) */
-function ppmForWeekKey(key){
+function ppmForWeekKey(key, rows){
   const m=/^(\d{4})-W(\d{1,2})$/.exec(String(key)); if(!m) return null;
   const y=+m[1], w=+m[2];
   const days=new Set();
@@ -423,7 +423,7 @@ function ppmForWeekKey(key){
   let prod=0; PROD.forEach(p=>{ if(days.has(p.d)) prod+=(+p.q||0); });
   if(prod<=0) return null;
   let def=0, has=false;
-  realRows().forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
+  (rows||realRows()).forEach(r=>{ if(days.has(r.d)){ def+=(+r.q||0); has=true; } });
   if(!has) return null;
   return Math.round(def/prod*1e6);
 }
@@ -805,7 +805,7 @@ function render(){
   // PPM line — File 2 (Jan..Mai) + tout mois supplémentaire avec production saisie
   const MLAB=['','Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
   // Axe PPM selon la granularité choisie (_ppmG) : jour / mois / année.
-  const _RRppm=realRows();
+  const _RRppm=fr;   // le PPM suit la sélection filtrée (période, site…)
   const pmMap=prodByMonth();
   let allKeys, keyLabel, _ppmTitle;
   if(_ppmG==='d'){
@@ -828,7 +828,7 @@ function render(){
   }
   { const _pt=document.getElementById('ppm-title'); if(_pt) _pt.textContent=_ppmTitle; }
   charts.ppm.data.labels=allKeys.map(keyLabel);
-  const ppmCalc=allKeys.map(k=> _ppmG==='w' ? ppmForWeekKey(k) : ppmForPrefix(k));
+  const ppmCalc=allKeys.map(k=> _ppmG==='w' ? ppmForWeekKey(k,fr) : ppmForPrefix(k,fr));
   // Couleur du PPM : ROUGE si au-dessus de la cible, VERT si sous objectif.
   const _ppmCol=v=>(v!=null && v>tgt)?C.crimson:C.green;
   charts.ppm.data.datasets[0].data=ppmCalc;
