@@ -933,8 +933,10 @@ function render(){
   const mc=sumBy(fr,'ma').filter(([k])=>k&&k!=='Inconnue'&&k!=='NA').slice(0,12);
   charts.mach.data.labels=mc.map(([s])=>s);charts.mach.data.datasets[0].data=mc.map(([,v])=>v);charts.mach._vals=mc.map(([s])=>s);charts.mach.update();
 
-  // type d'outils — toutes les réclamations de la sélection, hors « Non renseigné »
-  const tl=sumBy(fr,'to').filter(([k])=>k && k!=='Non renseigné' && !BAD_VALS.includes(k)).slice(0,8);
+  // type d'outils — toutes les réclamations ; champ « Type d'outil » (out) ou son ancien champ (to)
+  const _toolMap=new Map();
+  fr.forEach(r=>{ const k=r.out||r.to; if(k && k!=='Non renseigné' && !BAD_VALS.includes(k)) _toolMap.set(k,(_toolMap.get(k)||0)+(+r.q||0)); });
+  const tl=[..._toolMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
   charts.tool.data.labels=tl.map(([s])=>s);charts.tool.data.datasets[0].data=tl.map(([,v])=>v);charts.tool._vals=tl.map(([s])=>s);charts.tool.update();
   const toolSub=document.getElementById('tool-sub');
   if(toolSub) toolSub.textContent=`hors « Non renseigné » · ${fmt(tl.reduce((a,[,v])=>a+v,0))} pcs`;
