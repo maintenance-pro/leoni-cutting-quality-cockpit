@@ -3099,6 +3099,27 @@ wireChartFilter('chWeek',  ()=>charts.week,  ()=>({d:'day',w:'week',m:'month'}[_
     _ppmG=b.dataset.g; seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); render();
   });
 })();
+/* Saisie rapide de la production du jour, directement sous la courbe Tendance (alimente le PPM) */
+(function(){
+  const d=document.getElementById('pq-date'), q=document.getElementById('pq-qty'), b=document.getElementById('pq-add'), h=document.getElementById('pq-hint');
+  if(!d||!q||!b) return;
+  d.value=todayLocal();
+  function refreshHint(){ if(h){ const tot=PROD.reduce((a,p)=>a+(+p.q||0),0); h.textContent=PROD.length?`${fmt(PROD.length)} jour(s) · ${fmt(tot)} pcs saisis`:''; } }
+  refreshHint();
+  function add(){
+    const dv=d.value, qv=toIntQ(q.value);
+    if(!dv){ toast('Date requise',true); return; }
+    if(!(qv>0)){ toast('Production (>0) requise',true); return; }
+    const ex=PROD.find(p=>p.d===dv); if(ex) ex.q=qv; else PROD.push({d:dv,q:qv});
+    lsSet(LS.prod,PROD); render(); refreshHint();
+    try{ const nd=new Date(dv+'T00:00:00'); nd.setDate(nd.getDate()-1); d.value=ymdLocal(nd); }catch(e){}
+    q.value=''; q.focus();
+    toast('Production enregistrée'+(window._fbReady?' · synchronisée ✓':''));
+  }
+  b.addEventListener('click',add);
+  q.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } });
+  d.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); q.focus(); } });
+})();
 /* Fenêtre Pareto NOK — dashboard intégré (iframe isolée, base64, aucun fichier externe) */
 (function(){
   let loaded=false;

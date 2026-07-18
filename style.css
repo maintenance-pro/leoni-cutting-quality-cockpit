@@ -354,6 +354,15 @@ body{min-height:100vh}
 .qrqc-lb-cap{color:#e7edfb;font-size:13px;font-weight:500;text-align:center}
 .qrqc-lb-x{position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:rgba(20,26,40,.7);color:#fff;cursor:pointer;display:grid;place-items:center}
 .qrqc-lb-x:hover{background:var(--crimson);border-color:var(--crimson)}
+/* ---------- Saisie rapide production (sous la courbe Tendance) ---------- */
+.prodq{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.prodq-lab{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--mid);white-space:nowrap}
+.prodq-lab small{color:var(--dim);font-weight:400}
+.prodq-in{padding:7px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--input-bg);color:var(--hi);font-size:13px;outline:none;max-width:150px}
+.prodq-in:focus{border-color:var(--accent)}
+.prodq-btn{padding:7px 14px;border:none;border-radius:8px;background:var(--green);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer}
+.prodq-btn:hover{filter:brightness(1.08)}
+.prodq-hint{font-size:11px;color:var(--dim);margin-left:auto}
 .tblwrap{overflow:auto;max-height:460px;border:1px solid var(--line);border-radius:10px;margin-top:13px}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 thead th{position:sticky;top:0;background:var(--pop-bg);color:var(--mid);text-align:left;padding:10px 12px;font-weight:600;
