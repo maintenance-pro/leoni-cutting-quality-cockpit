@@ -545,9 +545,8 @@ function initCharts(){
 
   charts.ppm=new Chart(document.getElementById('chPPM'),{type:'line',
     data:{labels:DATA.ppm.months,datasets:[
-      {label:'PPM réel (File 2)',data:[],borderColor:C.crimson,backgroundColor:'rgba(251,90,106,.12)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:C.crimson,borderWidth:2.5},
-      {label:'PPM calculé (saisie prod.)',data:[],borderColor:C.violet,backgroundColor:'transparent',fill:false,tension:.35,pointRadius:4,pointBackgroundColor:C.violet,borderWidth:2.2,spanGaps:true},
-      {label:'Cible '+DATA.ppm.ppmTarget,data:DATA.ppm.months.map(()=>DATA.ppm.ppmTarget),borderColor:C.green,borderDash:[6,5],pointRadius:0,borderWidth:1.8,fill:false}
+      {label:'PPM',data:[],borderColor:C.green,backgroundColor:'transparent',fill:false,tension:.3,pointRadius:4,borderWidth:2.6,spanGaps:true},
+      {label:'Cible '+DATA.ppm.ppmTarget,data:DATA.ppm.months.map(()=>DATA.ppm.ppmTarget),borderColor:'rgba(148,177,255,.45)',borderDash:[6,5],pointRadius:0,borderWidth:1.6,fill:false}
     ]},
     options:baseOpts({plugins:{legend:{display:true,labels:{usePointStyle:true,boxWidth:8,padding:14}},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+(c.parsed.y==null?'—':fmt(c.parsed.y)+' PPM')}}}})});
 
@@ -829,29 +828,24 @@ function render(){
   }
   { const _pt=document.getElementById('ppm-title'); if(_pt) _pt.textContent=_ppmTitle; }
   charts.ppm.data.labels=allKeys.map(keyLabel);
-  // PPM réel (File 2) : valeurs sur les mois de base, null au-delà
-  // Ligne « PPM réel (File 2) » = données de démonstration → retirée.
-  // Le PPM affiché provient uniquement des vraies données (ppmCalc = défauts ÷ production saisie).
-  const ppmReal=allKeys.map(()=>null);
-  // PPM = défauts ÷ production sur les mêmes jours, pour chaque période de l'axe (jour/mois/année)
   const ppmCalc=allKeys.map(k=> _ppmG==='w' ? ppmForWeekKey(k) : ppmForPrefix(k));
-  // cible prolongée sur tout l'axe
-  charts.ppm.data.datasets[2].data=allKeys.map(()=>tgt);
-  charts.ppm.data.datasets[2].label='Cible '+tgt;
-  // emphase du/des mois de la sélection (clé AAAA-MM)
-  const focusKeys=new Set([...fr].map(r=>(r.d||'').slice(0,7)));
-  const ppmNarrowed=filters.week.size>0||filters.month.size>0;
-  charts.ppm.data.datasets[0].data=ppmReal;
-  charts.ppm.data.datasets[0].pointRadius = ppmNarrowed ? allKeys.map(k=>focusKeys.has(k)?8:0) : 4;
-  charts.ppm.data.datasets[0].pointBackgroundColor = ppmNarrowed ? allKeys.map(k=>focusKeys.has(k)?C.crimson:'rgba(251,90,106,.10)') : C.crimson;
-  charts.ppm.data.datasets[1].data=ppmCalc;
+  // Couleur du PPM : ROUGE si au-dessus de la cible, VERT si sous objectif.
+  const _ppmCol=v=>(v!=null && v>tgt)?C.crimson:C.green;
+  charts.ppm.data.datasets[0].data=ppmCalc;
+  charts.ppm.data.datasets[0].pointRadius=4;
+  charts.ppm.data.datasets[0].pointBackgroundColor=ppmCalc.map(_ppmCol);
+  charts.ppm.data.datasets[0].pointBorderColor=ppmCalc.map(_ppmCol);
+  charts.ppm.data.datasets[0].borderColor=C.green;
+  charts.ppm.data.datasets[0].segment={ borderColor:ctx=>_ppmCol(ctx.p1.parsed.y) };
+  charts.ppm.data.datasets[1].data=allKeys.map(()=>tgt);
+  charts.ppm.data.datasets[1].label='Cible '+fmt(tgt);
   charts.ppm.update();
   const ppmSub=document.getElementById('ppm-sub');
-  const hasCalc=ppmCalc.some(v=>v!=null);
-  const prodMonthsOutside=[...pmMap.keys()].filter(k=>ppmForKey(k)==null);
+  const _nPpm=ppmCalc.filter(v=>v!=null).length;
+  const _ppmUnit=_ppmG==='d'?'jour(s)':_ppmG==='w'?'semaine(s)':_ppmG==='y'?'année(s)':'mois';
   if(ppmSub){
-    if(ppmNarrowed) ppmSub.textContent='Mois de la sélection mis en évidence';
-    else if(hasCalc) ppmSub.textContent=`PPM réel (File 2) + calculé sur ${ppmCalc.filter(v=>v!=null).length} mois saisi(s)`;
+    if(!allKeys.length) ppmSub.textContent='Aucune donnée';
+    else if(_nPpm) ppmSub.textContent=`PPM sur ${_nPpm} ${_ppmUnit} · rouge = au-dessus cible, vert = sous objectif`;
     else if(pmMap.size) ppmSub.textContent='Production saisie — le PPM calculé s\u2019affiche dès qu\u2019il y a des défauts sur les mêmes jours';
     else ppmSub.textContent='Source : suivi PPM · saisis la production (⚙️ Gestion)';
   }
