@@ -2038,7 +2038,7 @@ function mgProd(){
   <div class="mg-h" style="margin-top:22px">${icon('factory',16)} Production journalière &amp; PPM mensuel</div>
   <div class="mg-p">Saisis la <b>production de chaque jour</b> (pièces produites). Le <b>PPM mensuel</b> est calculé automatiquement : <b>PPM = défauts ÷ production × 1 000 000</b>, comparé à la cible (<b>${tgt}</b>). La courbe « PPM calculé » s'ajoute au graphique « PPM mensuel vs cible » du tableau de bord.</div>
   <div class="mg-add">
-    <div class="field" style="max-width:190px"><label>Date</label><input type="date" id="prod-date" value="${todayLocal()}"></div>
+    <div class="field" style="max-width:190px"><label>Date</label><input type="date" id="prod-date"></div>
     <div class="field"><label>Production du jour (pcs)</label><input type="number" id="prod-qty" min="1" step="1" placeholder="ex. 1 850 000"></div>
     <button class="mg-addbtn" id="prod-add">${icon('plus',13)} Ajouter</button>
     <button class="d8-tbtn" id="prod-import-btn" style="align-self:flex-end;height:39px">⬆ Importer Excel</button>
@@ -2230,19 +2230,13 @@ function wireMgTab(tab){
     $('data-xlsx-import-file').addEventListener('change',e=>{ if(e.target.files[0]) importClaimsExcel(e.target.files[0]); e.target.value=''; });
   }
   if(tab==='prod'){
-    function _prodAdd(){
-      const d=$('prod-date').value, q=toIntQ($('prod-qty').value);
+    $('prod-add').addEventListener('click',()=>{
+      const d=$('prod-date').value, q=parseInt($('prod-qty').value);
       if(!d){toast('Date requise',true);return;}
       if(!(q>0)){toast('Production (>0) requise',true);return;}
       const ex=PROD.find(p=>p.d===d); if(ex) ex.q=q; else PROD.push({d,q});
-      lsSet(LS.prod,PROD); render(); renderMgTab('prod');
-      // reprise rapide : jour précédent + focus quantité (remplir plusieurs jours d'affilée)
-      try{ const nd=new Date(d+'T00:00:00'); nd.setDate(nd.getDate()-1); const pd=$('prod-date'); if(pd) pd.value=ymdLocal(nd); const pq=$('prod-qty'); if(pq){ pq.value=''; pq.focus(); } }catch(e){}
-      toast('Production enregistrée');
-    }
-    $('prod-add').addEventListener('click',_prodAdd);
-    $('prod-qty').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); _prodAdd(); } });
-    $('prod-date').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); const pq=$('prod-qty'); if(pq) pq.focus(); } });
+      lsSet(LS.prod,PROD); render(); renderMgTab('prod'); toast('Production enregistrée');
+    });
     document.querySelectorAll('[data-proddel]').forEach(b=>b.addEventListener('click',()=>{
       PROD.splice(+b.dataset.proddel,1); lsSet(LS.prod,PROD); render(); renderMgTab('prod');
     }));
