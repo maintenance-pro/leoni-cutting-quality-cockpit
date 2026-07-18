@@ -3852,6 +3852,10 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     'Atelier 8D & analyse des causes':'8D workshop & cause analysis','Atelier 8D — connexion prioritaire':'8D workshop — priority connection',
     'Par site':'By site','Par client':'By customer','Par équipe':'By team','Machines les plus impactées':'Most impacted machines',"Par type d'outils":'By tool type','Par type de machine':'By machine type','Source : Outils / Machine / Opérateur':'Source: Tools / Machine / Operator',
     'Tendance causes racines 6M — historique 8D':'6M root-cause trend — 8D history','Scrap mensuel vs cible':'Monthly scrap vs target','Détail des défauts':'Defect details',
+    // Carte de chaleur (titre dynamique + dimensions)
+    'Intensité des défauts · semaine ×':'Defect intensity · week ×','équipe':'team','source':'source','shift':'shift',
+    'Par fournisseur d\'outils':'By tool supplier','Répartition cumulée des causes 6M sur l\'ensemble des 8D archivés':'Cumulative 6M cause breakdown across all archived 8Ds',
+    'MILIEU':'ENVIRONMENT','MACHINE':'MACHINE','MÉTHODE':'METHOD','MATIÈRE':'MATERIAL',"MAIN D'ŒUVRE":'MANPOWER','MESURE':'MEASUREMENT','CAUSES':'CAUSES',
     // KPI
     'Événements défaut':'Defect events','Quantité défaut totale':'Total defect quantity','PPM global':'Global PPM','PPM sélection':'Selection PPM','Sites actifs':'Active sites','Machines impactées':'Impacted machines','Nature dominante':'Dominant type',
     // Panneau PPM
