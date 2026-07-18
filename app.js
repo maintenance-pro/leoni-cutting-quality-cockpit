@@ -838,7 +838,7 @@ function render(){
   charts.ppm.data.datasets[0].borderColor=C.green;
   charts.ppm.data.datasets[0].segment={ borderColor:ctx=>_ppmCol(ctx.p1.parsed.y) };
   charts.ppm.data.datasets[1].data=allKeys.map(()=>tgt);
-  charts.ppm.data.datasets[1].label='Cible '+fmt(tgt);
+  charts.ppm.data.datasets[1].label=window.__t?window.__t('Cible '+fmt(tgt)):('Cible '+fmt(tgt));
   charts.ppm.update();
   const ppmSub=document.getElementById('ppm-sub');
   const _nPpm=ppmCalc.filter(v=>v!=null).length;
@@ -964,6 +964,7 @@ function render(){
   const scT = useScT ? _scKeys.map(()=>Math.round(+SCRAP_TGT)) : _scKeys.map(()=>null);
   charts.scrap.data.datasets[0].data=scR;
   charts.scrap.data.datasets[1].data=scT;
+  if(window.__t){ charts.scrap.data.datasets[0].label=window.__t('Scrap réel (pcs)'); charts.scrap.data.datasets[1].label=window.__t('Cible'); }
   charts.scrap.update();
   const scRsum=scR.reduce((a,v)=>a+(v||0),0), scTsum=scT.reduce((a,v)=>a+(v||0),0);
   const scPct=scTsum?Math.round((scRsum-scTsum)/scTsum*100):0;
@@ -3881,8 +3882,35 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     'Gestion & paramètres':'Settings & parameters','Données':'Data','Opérateurs':'Operators','Superviseurs':'Supervisors','Référentiels':'Reference lists','Journal':'Audit log','Corbeille':'Trash'
   };
   const SKIP=new Set(['SCRIPT','STYLE','NOSCRIPT','CANVAS','OPTION','TEXTAREA']);
-  function trText(n){ const raw=n.nodeValue; const k=raw.trim(); if(!k) return; const en=DICT[k]; if(en!=null && en!==k) n.nodeValue=raw.replace(k,en); }
-  function trAttr(el){ ['placeholder','title','aria-label'].forEach(a=>{ if(!el.hasAttribute||!el.hasAttribute(a)) return; const v=el.getAttribute(a), k=(v||'').trim(); if(DICT[k]!=null && DICT[k]!==k) el.setAttribute(a,DICT[k]); }); }
+  // Règles de motifs pour les chaînes avec chiffres/données interpolées (appliquées si aucune
+  // correspondance exacte) : traduisent les MOTS français en gardant chiffres et données.
+  const PAT=[
+    [/⇲ double-clic = filtrer/g,'⇲ double-click = filter'],[/double-clic = filtrer/g,'double-click = filter'],
+    [/(\d+)\s*derniers affichés/g,'last $1 shown'],
+    [/\bsemaines?\b/gi,'weeks'],[/\bjour\(s\)/gi,'day(s)'],[/\bjours?\b/gi,'days'],[/\bmois\b/gi,'months'],[/\bannée\(s\)/gi,'year(s)'],[/\bannées?\b/gi,'years'],
+    [/moy\./g,'avg.'],[/\/ événement/g,'/ event'],[/événement\(s\)/gi,'event(s)'],[/événements?/gi,'events'],
+    [/pièces? bonnes/gi,'good parts'],[/pièces? rebutées?/gi,'scrapped parts'],[/rebutées?/gi,'scrapped'],
+    [/base terrain/gi,'field data'],[/Mise à jour/g,'Updated'],[/Édité le/gi,'Edited on'],
+    [/hors « Non renseigné »/g,'excl. "Not specified"'],[/« Non renseigné »/g,'"Not specified"'],[/Non renseigné/gi,'Not specified'],[/Non précisé/gi,'Not specified'],[/Inconnues?\b/gi,'Unknown'],
+    [/Aucune donnée/gi,'No data'],[/Aucun élément/gi,'No item'],[/Aucune réclamation/gi,'No claim'],[/Aucune production/gi,'No production'],
+    [/production saisie/gi,'production entered'],[/production non saisie/gi,'no production entered'],[/saisis la production/gi,'enter production'],[/saisie prod\./gi,'from production'],
+    [/au-dessus de la cible/gi,'above target'],[/au-dessus cible/gi,'above target'],[/sous la cible/gi,'below target'],[/sous objectif/gi,'below target'],[/> cible/g,'> target'],[/≤ cible/g,'≤ target'],
+    [/lignes? ×/gi,'rows ×'],[/cellule/gi,'cell'],[/vs cible/gi,'vs target'],[/\bCible\b/g,'Target'],[/\bcible\b/g,'target'],
+    [/Scrap réel/gi,'Actual scrap'],[/PPM réel/gi,'Actual PPM'],[/PPM calculé/gi,'Computed PPM'],
+    [/réclamation\(s\)/gi,'claim(s)'],[/réclamations?/gi,'claims'],[/enregistrée?s?/gi,'saved'],[/supprimée?s?/gi,'deleted'],[/ajoutée?s?/gi,'added'],[/doublon\(s\) ignoré\(s\)/gi,'duplicate(s) ignored'],[/synchronisée?/gi,'synced'],[/Doublons nettoyés/gi,'Duplicates cleaned'],
+    [/défaut de la sélection/gi,'defect in selection'],[/Défauts?\b/g,'Defects'],[/défauts?/gi,'defects'],
+    [/calculé sur/gi,'computed over'],[/Problème/gi,'Problem'],[/Source Outils/gi,'Tools source'],
+    [/pour calculer le PPM/gi,'to compute PPM'],[/pcs produites/gi,'pcs produced'],[/produites?/gi,'produced'],
+    [/Production du jour/gi,'Daily production'],[/pour le PPM/gi,'for PPM'],[/Fiche QRQC/gi,'QRQC sheet'],
+    [/nature dominante/gi,'dominant type'],[/sur la sélection courante/gi,'on the current selection'],
+    [/Date requise/gi,'Date required'],[/requise?/gi,'required'],[/invalide/gi,'invalid'],[/Période/gi,'Period'],
+    [/pièces? rebutées? par mois/gi,'scrapped parts per month']
+  ];
+  function tr(s){ if(s==null) return s; const k=(''+s).trim(); if(!k) return s; if(DICT[k]!=null) return (''+s).replace(k,DICT[k]); let o=''+s; for(let i=0;i<PAT.length;i++) o=o.replace(PAT[i][0],PAT[i][1]); return o; }
+  window.__t=function(s){ return LANG==='en'?tr(s):s; };
+  window.__lang=function(){ return LANG; };
+  function trText(n){ if(LANG!=='en') return; const v=n.nodeValue, nv=tr(v); if(nv!==v) n.nodeValue=nv; }
+  function trAttr(el){ if(LANG!=='en'||!el.hasAttribute) return; ['placeholder','title','aria-label'].forEach(a=>{ if(!el.hasAttribute(a)) return; const v=el.getAttribute(a), nv=tr(v); if(nv!==v) el.setAttribute(a,nv); }); }
   function translateTree(root){
     if(!root) return;
     if(root.nodeType===3){ trText(root); return; }
