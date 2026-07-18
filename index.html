@@ -20,8 +20,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<link rel="stylesheet" href="theme.css?v=20260715u">
-<link rel="stylesheet" href="style.css?v=20260715u">
+<link rel="stylesheet" href="theme.css?v=20260715v">
+<link rel="stylesheet" href="style.css?v=20260715v">
 </head>
 <body>
 <!-- ========== ÉCRAN DE CONNEXION SÉCURISÉ (Firebase Auth) ========== -->
@@ -221,6 +221,7 @@
         <button class="themetgl icon-only" id="tabletTgl" title="Mode tablette — cibles tactiles agrandies" aria-label="Mode tablette — cibles tactiles agrandies"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.2"/><line x1="10.5" y1="18.2" x2="13.5" y2="18.2"/></svg></span><span class="tt">Écran</span></button>
         <button class="themetgl icon-only" id="cmdpBtn" title="Palette de commande (Ctrl+K)" aria-label="Palette de commande (Ctrl+K)"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg></span><span class="tt">Ctrl+K</span></button>
         <button class="themetgl icon-only" id="densTgl" title="Densité d'affichage — Confort / Compact" aria-label="Densité d'affichage — Confort / Compact"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></span><span class="tt">Confort</span></button>
+        <button class="themetgl" id="langTgl" title="Switch language · Changer la langue" aria-label="Switch language"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg></span><span class="tt" id="langLabel">EN</span></button>
         <button class="themetgl icon-only" id="themeTgl" aria-label="Changer le thème clair/sombre"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/></svg></span><span class="tt">Clair</span></button>
         <button class="themetgl icon-only" id="tvBtn" title="Mode télévision — affichage plein écran pour la production" aria-label="Mode télévision — affichage plein écran"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="13" rx="1.8"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17.5" x2="12" y2="21"/></svg></span><span class="tt">TV</span></button>
         <button class="themetgl icon-only" id="fbAccounts" title="Gérer les comptes & accès" aria-label="Gérer les comptes et accès" style="display:none"><span class="ic"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.6" r="2.8"/><path d="M6.2 18.2c.9-2.7 3-4.2 5.8-4.2s4.9 1.5 5.8 4.2"/></svg></span><span class="tt">Comptes</span></button>
@@ -827,6 +828,6 @@
 <!-- toast -->
 <div class="toast" id="toast"><span class="ti"><svg class="ic-svg" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4.5,12.5 9.5,17.5 19.5,6.5"/></svg></span><span id="toastMsg"></span></div>
 
-<script src="app.js?v=20260715u"></script>
+<script src="app.js?v=20260715v"></script>
 </body>
 </html>

@@ -3808,3 +3808,112 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
 })();
 /* ===================== FIN FIREBASE ===================== */
 
+/* ============================================================
+   INTERNATIONALISATION (FR ⇄ EN)
+   Bouton dans la barre d'outils. Le français reste la langue source ;
+   en anglais, on traduit le DOM via un dictionnaire + un MutationObserver
+   qui prend en charge le contenu injecté dynamiquement (KPI, tableaux, modales…).
+   Bascule = rechargement de page avec la langue mémorisée (et synchronisée n/a).
+   Remarque : les libellés dessinés DANS les graphiques (canvas Chart.js) et les
+   phrases avec chiffres interpolés restent en français (limite connue).
+   ============================================================ */
+(function(){
+  const LKEY='lwsq_lang_v1';
+  let LANG='fr'; try{ LANG=localStorage.getItem(LKEY)||'fr'; }catch(e){}
+  window.__LANG=LANG;
+  const DICT={
+    // Marque / en-tête
+    'Cutting · Suivi défauts & PPM':'Cutting · Defect & PPM tracking',
+    'Plant':'Plant','Période':'Period','Mise à jour':'Updated','Année':'Year',
+    // Barre d'outils (libellés + infobulles)
+    'Écran':'Screen','Confort':'Comfort','Compact':'Compact','Clair':'Light','Sombre':'Dark','Comptes':'Accounts','Quitter':'Sign out','Installer':'Install',
+    'Mode tablette — cibles tactiles agrandies':'Tablet mode — larger touch targets',
+    'Palette de commande (Ctrl+K)':'Command palette (Ctrl+K)',
+    "Densité d'affichage — Confort / Compact":'Display density — Comfort / Compact',
+    'Changer le thème clair/sombre':'Toggle light/dark theme',
+    'Mode télévision — affichage plein écran pour la production':'TV mode — full-screen production display',
+    'Mode télévision — affichage plein écran':'TV mode — full-screen display',
+    'Gérer les comptes & accès':'Manage accounts & access','Gérer les comptes et accès':'Manage accounts and access',
+    'Se déconnecter':'Sign out',"Installer l'application (téléphone / PC)":'Install the app (phone / PC)',
+    'Switch language · Changer la langue':'Switch language · Changer la langue',
+    // Boutons d'action
+    'Gestion':'Settings','Rapport':'Report','E-mail':'Email','Atelier 8D':'8D Workshop','Nouvelle réclamation':'New claim',
+    'Préparer un e-mail avec la synthèse de la sélection courante':'Prepare an email with the current selection summary',
+    // Filtres
+    'Filtres':'Filters','Réinitialiser':'Reset','Rechercher…':'Search…','Rechercher une action… (Échap pour fermer)':'Search an action… (Esc to close)','Chercher mois…':'Search month…','Effacer':'Clear','Fermer':'Close','Aucun résultat':'No result',
+    'Année':'Year','Mois':'Month','Semaine':'Week','Jour':'Day','Site':'Site','Client':'Customer','Équipe':'Team','Machine':'Machine','Fournisseur':'Supplier','Nature':'Type','Problème':'Problem',"Type mach.":'Mach. type','Connexion':'Connection',
+    // Eyebrows (sur-titres)
+    'Tendance':'Trend','Pilotage':'Control','Répartition':'Breakdown','Équipes':'Teams','Top contributeurs':'Top contributors','Outillage':'Tooling','Classification':'Classification','Analyse causale':'Root-cause analysis','Carte de chaleur':'Heatmap','Objectif · File 2':'Target · File 2','Production':'Production','Comparatif':'Comparison','Registre':'Registry',
+    'Pilotage Qualité · IATF 16949':'Quality control · IATF 16949','Analyse Pareto · IATF':'Pareto analysis · IATF','Analyse Pareto · Connexion':'Pareto analysis · Connection','Résolution structurée · 8D':'Structured resolution · 8D','Résolution structurée · 8D Connexion':'Structured resolution · 8D Connection',
+    // Titres de cartes
+    'Quantité de défauts par jour':'Defect quantity by day','Quantité de défauts par semaine':'Defect quantity by week','Quantité de défauts par mois':'Defect quantity by month',
+    'PPM par jour vs cible':'PPM by day vs target','PPM par semaine vs cible':'PPM by week vs target','PPM par mois vs cible':'PPM by month vs target','PPM par année vs cible':'PPM by year vs target',
+    'Natures de défaut — 80/20':'Defect types — 80/20','Problèmes de connexion — 80/20':'Connection issues — 80/20',
+    'Atelier 8D & analyse des causes':'8D workshop & cause analysis','Atelier 8D — connexion prioritaire':'8D workshop — priority connection',
+    'Par site':'By site','Par client':'By customer','Par équipe':'By team','Machines les plus impactées':'Most impacted machines',"Par type d'outils":'By tool type','Par type de machine':'By machine type','Source : Outils / Machine / Opérateur':'Source: Tools / Machine / Operator',
+    'Tendance causes racines 6M — historique 8D':'6M root-cause trend — 8D history','Scrap mensuel vs cible':'Monthly scrap vs target','Détail des défauts':'Defect details',
+    // KPI
+    'Événements défaut':'Defect events','Quantité défaut totale':'Total defect quantity','PPM global':'Global PPM','PPM sélection':'Selection PPM','Sites actifs':'Active sites','Machines impactées':'Impacted machines','Nature dominante':'Dominant type',
+    // Panneau PPM
+    'PPM actuel':'Current PPM','Cible':'Target','Écart':'Gap','PPM':'PPM','Aucune donnée':'No data',
+    // Sous-titres divers
+    'Alertes temps réel sur la sélection — prioriser l’intervention & réduire le scrap':'Real-time alerts on the selection — prioritise action & reduce scrap',
+    // Production rapide
+    'Production du jour':'Daily production','(pour le PPM)':'(for PPM)','pcs produites':'pcs produced',
+    // Modale Nouvelle réclamation
+    'Nouvelle réclamation — Coupe':'New claim — Cutting','Importer Excel (plusieurs)':'Import Excel (multiple)','Exporter Excel':'Export Excel',
+    'N° CAO':'CAO No.','Pièces bonnes':'Good parts','Emplacement pagode':'Pagoda location','PPM exact (ordre)':'Exact PPM (order)',
+    'Date':'Date','Quantité (pcs NOK)':'Quantity (NOK pcs)','Site de détection':'Detection site','Fournisseur outils':'Tool supplier',"Type d'outils":'Tool type',"Nom d'outil":'Tool name','Opérateur':'Operator','Superviseur':'Supervisor',
+    'Problème — source du défaut':'Problem — defect source','Nature de défaut':'Defect type','Famille produit':'Product family','AQL':'AQL','Process':'Process','Type machine':'Machine type','Description outil':'Tool description',"Type d'outil":'Tool type','Repère':'Reference','NB':'NB',
+    'Ajouter au registre':'Add to registry','Annuler':'Cancel','Ajouter':'Add','Importer':'Import','Exporter':'Export','Tout supprimer':'Delete all','Export Excel (.xlsx)':'Export Excel (.xlsx)','Scanner / Ajouter':'Scan / Add',
+    // Colonnes tableau
+    'Sem':'Wk','Shift':'Shift','Type machine':'Machine type','Description outil':'Tool description','Connexion':'Connection','Repère':'Reference','Nature de défaut':'Defect type','Famille':'Family','Pagode':'Pagoda','PPM ordre':'PPM order','Qté':'Qty','Quantité':'Quantity',
+    // Login
+    'Se connecter':'Sign in','Mot de passe':'Password','Accès réservé · authentification requise':'Restricted access · authentication required',
+    'Quality Cockpit — Cutting':'Quality Cockpit — Cutting',
+    // QRQC
+    'Archive QRQC':'QRQC archive','Aucune fiche QRQC pour l\'instant.':'No QRQC sheet yet.',
+    // Gestion
+    'Gestion & paramètres':'Settings & parameters','Données':'Data','Opérateurs':'Operators','Superviseurs':'Supervisors','Référentiels':'Reference lists','Journal':'Audit log','Corbeille':'Trash'
+  };
+  const SKIP=new Set(['SCRIPT','STYLE','NOSCRIPT','CANVAS','OPTION','TEXTAREA']);
+  function trText(n){ const raw=n.nodeValue; const k=raw.trim(); if(!k) return; const en=DICT[k]; if(en!=null && en!==k) n.nodeValue=raw.replace(k,en); }
+  function trAttr(el){ ['placeholder','title','aria-label'].forEach(a=>{ if(!el.hasAttribute||!el.hasAttribute(a)) return; const v=el.getAttribute(a), k=(v||'').trim(); if(DICT[k]!=null && DICT[k]!==k) el.setAttribute(a,DICT[k]); }); }
+  function translateTree(root){
+    if(!root) return;
+    if(root.nodeType===3){ trText(root); return; }
+    if(root.nodeType!==1 || SKIP.has(root.nodeName)) return;
+    trAttr(root);
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode(n){ return (n.parentNode && !SKIP.has(n.parentNode.nodeName) && n.nodeValue.trim())?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT; }});
+    const tn=[]; while(w.nextNode()) tn.push(w.currentNode);
+    tn.forEach(trText);
+    root.querySelectorAll('[placeholder],[title],[aria-label]').forEach(trAttr);
+  }
+  let _obs=null;
+  function startObserver(){
+    if(_obs||!window.MutationObserver) return;
+    _obs=new MutationObserver(muts=>{
+      _obs.disconnect();
+      try{
+        muts.forEach(m=>{
+          if(m.type==='characterData'){ trText(m.target); }
+          else m.addedNodes && m.addedNodes.forEach(nn=>translateTree(nn));
+        });
+      }catch(e){}
+      _obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+    });
+    _obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+  }
+  function apply(){
+    const lbl=document.getElementById('langLabel'); if(lbl) lbl.textContent=(LANG==='fr'?'EN':'FR');
+    try{ document.documentElement.lang=LANG; }catch(e){}
+    if(LANG==='en'){ try{ translateTree(document.body); }catch(e){} startObserver(); }
+  }
+  function wire(){
+    const b=document.getElementById('langTgl');
+    if(b) b.addEventListener('click',()=>{ const nx=(LANG==='en'?'fr':'en'); try{ localStorage.setItem(LKEY,nx); }catch(e){} location.reload(); });
+    apply();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+
