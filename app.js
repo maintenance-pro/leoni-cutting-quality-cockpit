@@ -878,11 +878,12 @@ function render(){
   const tot=par.reduce((a,[,v])=>a+v,0); let run=0;
   const cumArr=par.map(([,v])=>{run+=v;return tot?run/tot*100:0;});
   const vitalCut=(()=>{const i=cumArr.findIndex(c=>c>=80);return i>=0?i:par.length-1;})();
-  charts.pareto.data.labels=par.map(([n])=>n.length>26?n.slice(0,25)+'…':n);
+  charts.pareto.data.labels=par.map(([n])=>{const t=window.__t?window.__t(n):n; return t.length>26?t.slice(0,25)+'…':t;});
   charts.pareto.data.datasets[0].data=par.map(([,v])=>v);
   charts.pareto.data.datasets[0].backgroundColor=par.map((_,i)=> i<=vitalCut ? C.crimson : 'rgba(147,166,196,.32)');
   charts.pareto.data.datasets[1].data=cumArr.map(c=>+c.toFixed(1));
   charts.pareto._vals=par.map(([n])=>n);
+  if(window.__t){ charts.pareto.data.datasets[0].label=window.__t('Quantité'); charts.pareto.data.datasets[1].label=window.__t('% cumulé'); }
   charts.pareto.update();
   document.getElementById('par-sub').textContent=`${par.length} natures · ${vitalCut+1} en rouge = 80% (vital few) · ⇲ double-clic = filtrer`;
 
@@ -3904,7 +3905,21 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     [/Production du jour/gi,'Daily production'],[/pour le PPM/gi,'for PPM'],[/Fiche QRQC/gi,'QRQC sheet'],
     [/nature dominante/gi,'dominant type'],[/sur la sélection courante/gi,'on the current selection'],
     [/Date requise/gi,'Date required'],[/requise?/gi,'required'],[/invalide/gi,'invalid'],[/Période/gi,'Period'],
-    [/pièces? rebutées? par mois/gi,'scrapped parts per month']
+    [/pièces? rebutées? par mois/gi,'scrapped parts per month'],
+    // Sous-titre Pareto + légendes
+    [/\bnatures?\b/gi,'types'],[/en rouge/gi,'in red'],[/% cumulé/gi,'cumulative %'],[/Quantité/g,'Quantity'],[/connexion\(s\)/gi,'connection(s)'],[/connexions?/gi,'connections'],
+    // Natures de défaut (données) — traduites au niveau des mots (spécifiques d'abord)
+    [/non conforme aux exigences/gi,'non-compliant with requirements'],[/non conforme/gi,'non-compliant'],
+    [/Brin cuivre coupé/gi,'Cut copper strand'],[/Brins hors sertissage/gi,'Strands outside crimp'],
+    [/Longueur de fil/gi,'Wire length'],[/Longueur dénudage/gi,'Stripping length'],[/trop court/gi,'too short'],[/trop long/gi,'too long'],[/trop grande?/gi,'too large'],
+    [/Erreur bobine fil/gi,'Wire spool error'],[/Erreur connexion/gi,'Connection error'],[/Erreur/gi,'Error'],
+    [/Hauteur isolant/gi,'Insulation height'],[/Isolant reculé/gi,'Receded insulation'],[/Isolant/gi,'Insulation'],[/reculé/gi,'receded'],
+    [/Bavure sertissage/gi,'Crimp burr'],[/Zone de sertissage/gi,'Crimp zone'],[/sertissage/gi,'crimp'],[/Chanfrein/gi,'Chamfer'],[/déformée?/gi,'deformed'],
+    [/Position du joint/gi,'Seal position'],[/Joint non étanche/gi,'Leaky seal'],[/non étanche/gi,'not sealed'],[/\bJoint\b/gi,'Seal'],
+    [/Fil endommagé/gi,'Damaged wire'],[/endommagée?/gi,'damaged'],
+    [/Dénudage ou dégainage/gi,'Stripping or sheathing'],[/dénudage/gi,'stripping'],[/dégainage/gi,'sheathing'],
+    [/Fenêtre exagérée/gi,'Excessive window'],[/exagérée?/gi,'excessive'],[/Témoin de coupe/gi,'Cut marker'],[/mal coupé/gi,'badly cut'],
+    [/\bmanquante?\b/gi,'missing'],[/\bBrins?\b/gi,'Strand'],[/\bFil\b/gi,'Wire']
   ];
   function tr(s){ if(s==null) return s; const k=(''+s).trim(); if(!k) return s; if(DICT[k]!=null) return (''+s).replace(k,DICT[k]); let o=''+s; for(let i=0;i<PAT.length;i++) o=o.replace(PAT[i][0],PAT[i][1]); return o; }
   window.__t=function(s){ return LANG==='en'?tr(s):s; };
