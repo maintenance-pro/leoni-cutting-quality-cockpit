@@ -933,12 +933,11 @@ function render(){
   const mc=sumBy(fr,'ma').filter(([k])=>k&&k!=='Inconnue'&&k!=='NA').slice(0,12);
   charts.mach.data.labels=mc.map(([s])=>s);charts.mach.data.datasets[0].data=mc.map(([,v])=>v);charts.mach._vals=mc.map(([s])=>s);charts.mach.update();
 
-  // fournisseur d'outils — uniquement les problèmes SOURCE OUTILS, hors « Non renseigné »
-  const toolRows=fr.filter(r=>r.pc==='Outils');
-  const tl=sumBy(toolRows,'to').filter(([k])=>k && k!=='Non renseigné' && !BAD_VALS.includes(k)).slice(0,8);
+  // type d'outils — toutes les réclamations de la sélection, hors « Non renseigné »
+  const tl=sumBy(fr,'to').filter(([k])=>k && k!=='Non renseigné' && !BAD_VALS.includes(k)).slice(0,8);
   charts.tool.data.labels=tl.map(([s])=>s);charts.tool.data.datasets[0].data=tl.map(([,v])=>v);charts.tool._vals=tl.map(([s])=>s);charts.tool.update();
   const toolSub=document.getElementById('tool-sub');
-  if(toolSub) toolSub.textContent=`Source Outils · hors « Non renseigné » · ${fmt(tl.reduce((a,[,v])=>a+v,0))} pcs`;
+  if(toolSub) toolSub.textContent=`hors « Non renseigné » · ${fmt(tl.reduce((a,[,v])=>a+v,0))} pcs`;
 
   // machine type (top contributeurs)
   const mtt=sumBy(fr,'mt').filter(([k])=>k&&k!=='Inconnue').slice(0,8);
