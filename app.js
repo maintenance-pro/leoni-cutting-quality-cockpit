@@ -933,13 +933,13 @@ function render(){
   const mc=sumBy(fr,'ma').filter(([k])=>k&&k!=='Inconnue'&&k!=='NA').slice(0,12);
   charts.mach.data.labels=mc.map(([s])=>s);charts.mach.data.datasets[0].data=mc.map(([,v])=>v);charts.mach._vals=mc.map(([s])=>s);charts.mach.update();
 
-  // type d'outils — toutes les réclamations ; champ « Type d'outil » (out) ou son ancien champ (to)
+  // type d'outils — UNIQUEMENT les défauts liés aux OUTILS (problème/source = « Outils »)
   const _toolMap=new Map();
-  fr.forEach(r=>{ const k=r.out||r.to; if(k && k!=='Non renseigné' && !BAD_VALS.includes(k)) _toolMap.set(k,(_toolMap.get(k)||0)+(+r.q||0)); });
+  fr.forEach(r=>{ if(r.pc!=='Outils') return; const k=r.out||r.to; if(k && k!=='Non renseigné' && !BAD_VALS.includes(k)) _toolMap.set(k,(_toolMap.get(k)||0)+(+r.q||0)); });
   const tl=[..._toolMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
   charts.tool.data.labels=tl.map(([s])=>s);charts.tool.data.datasets[0].data=tl.map(([,v])=>v);charts.tool._vals=tl.map(([s])=>s);charts.tool.update();
   const toolSub=document.getElementById('tool-sub');
-  if(toolSub) toolSub.textContent=`hors « Non renseigné » · ${fmt(tl.reduce((a,[,v])=>a+v,0))} pcs`;
+  if(toolSub) toolSub.textContent=`Problème « Outils » · hors « Non renseigné » · ${fmt(tl.reduce((a,[,v])=>a+v,0))} pcs`;
 
   // machine type (top contributeurs)
   const mtt=sumBy(fr,'mt').filter(([k])=>k&&k!=='Inconnue').slice(0,8);
