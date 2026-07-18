@@ -1096,16 +1096,16 @@ function renderCompare(fr){
 
 /* ---------------- TABLE ---------------- */
 const COLS=[
-  {k:'d',t:'Date'},{k:'y',t:'Année'},{k:'m',t:'Mois'},{k:'w',t:'Sem',f:v=>'S'+v},{k:'sh',t:'Shift'},
+  {k:'d',t:'Date'},{k:'y',t:'Année'},{k:'m',t:'Mois'},{k:'w',t:'Sem',f:v=>'S'+v},
   {k:'prc',t:'Process'},{k:'si',t:'Site'},{k:'pr',t:'Client',chip:true},{k:'eq',t:'Équipe'},
-  {k:'ma',t:'Machine'},{k:'mt',t:'Type machine'},{k:'to',t:'Fournisseur outils'},{k:'ou',t:"Nom d'outil"},
+  {k:'ma',t:'Machine'},{k:'mt',t:'Type machine'},{k:'ou',t:"Nom d'outil"},
   {k:'oud',t:'Description outil'},{k:'out',t:"Type d'outil"},{k:'cx',t:'Connexion'},{k:'cao',t:'N° CAO'},{k:'rep',t:'Repère'},
   {k:'na',t:'Nature de défaut'},{k:'pc',t:'Problème',pc:true},{k:'fa',t:'Famille'},
   {k:'op',t:'Opérateur'},{k:'su',t:'Superviseur'},{k:'aql',t:'AQL'},{k:'nb',t:'NB'},
   {k:'bon',t:'Pièces bonnes'},{k:'pag',t:'Pagode'},{k:'ppm',t:'PPM ordre'},{k:'q',t:'Qté',qty:true}
 ];
 const XLSX_COLS=[
-  {k:'d',t:'Date'},{k:'y',t:'Année'},{k:'m',t:'Mois'},{k:'w',t:'Semaine'},{k:'sh',t:'Shift'},
+  {k:'d',t:'Date'},{k:'y',t:'Année'},{k:'m',t:'Mois'},{k:'w',t:'Semaine'},
   {k:'prc',t:'Process'},{k:'si',t:'Site'},{k:'pr',t:'Client'},{k:'eq',t:'Équipe'},
   {k:'ma',t:'Machine'},{k:'mt',t:'Type machine'},{k:'to',t:'Fournisseur outils'},{k:'ou',t:"Nom d'outil"},
   {k:'oud',t:'Description outil'},{k:'out',t:"Type d'outil"},{k:'cx',t:'Connexion'},{k:'cao',t:'N° CAO'},{k:'rep',t:'Repère'},
