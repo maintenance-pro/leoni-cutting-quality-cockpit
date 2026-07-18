@@ -851,20 +851,23 @@ function render(){
   }
   /* --- bandeau de synthèse PPM (lisibilité) --- */
   (function(){
-    const has=ppmG!=null;
-    const cur=has?Math.round(ppmG):null, gap=has?Math.round(ppmG-tgt):null, over=has&&ppmG>tgt;
+    // « PPM actuel » = PPM de la DERNIÈRE période de la granularité choisie (jour/semaine/mois/année)
+    let _cur=null; for(let i=ppmCalc.length-1;i>=0;i--){ if(ppmCalc[i]!=null){ _cur=ppmCalc[i]; break; } }
+    const has=_cur!=null;
+    const cur=has?Math.round(_cur):null, gap=has?Math.round(_cur-tgt):null, over=has&&_cur>tgt;
     const cCol=over?'var(--crimson,#fb5a6a)':'var(--green,#34d399)';
     const cv=document.getElementById('ppmCurVal'); if(cv){ cv.textContent=has?fmt(cur):'—'; cv.style.color=has?cCol:'var(--mid)'; }
     const tv=document.getElementById('ppmTgtVal'); if(tv){ tv.textContent=fmt(tgt); tv.style.color='var(--green,#34d399)'; }
     const gv=document.getElementById('ppmGapVal'); if(gv){ gv.textContent=has?((gap>0?'+':'')+fmt(gap)):'—'; gv.style.color=has?cCol:'var(--mid)'; }
-    const st=document.getElementById('ppmStatus'); if(st){ st.className='ppm-status '+(has?(over?'bad':'good'):''); st.textContent=has?(over?('⚠ '+fmt(Math.abs(gap))+' PPM au-dessus de la cible'):('✓ '+fmt(Math.abs(gap))+' PPM sous la cible')):'Production non saisie — PPM global indisponible'; }
+    const st=document.getElementById('ppmStatus'); if(st){ st.className='ppm-status '+(has?(over?'bad':'good'):''); st.textContent=has?(over?('⚠ '+fmt(Math.abs(gap))+' PPM au-dessus de la cible'):('✓ '+fmt(Math.abs(gap))+' PPM sous la cible')):'Production non saisie — PPM indisponible'; }
     const mo=document.getElementById('ppmMonths');
     if(mo){
-      const moVals=DATA.ppm.months.map((mn,i)=>{ const k=`${PPM_YEAR}-${String(i+1).padStart(2,'0')}`; return {mn, v:ppmForKey(k)}; });
-      mo.innerHTML=moVals.map(x=>{
-        if(x.v==null) return '<div class="ppm-mo"><div class="mn">'+x.mn+'</div><div class="mv" style="color:var(--muted,#8190a8)">—</div></div>';
-        const cls=x.v>tgt?'over':'under', col=x.v>tgt?'var(--crimson,#fb5a6a)':'var(--green,#34d399)';
-        return '<div class="ppm-mo '+cls+'"><div class="mn">'+x.mn+'</div><div class="mv" style="color:'+col+'">'+fmt(x.v)+'</div></div>';
+      // tuiles = les périodes de la granularité courante (12 dernières), avec leur PPM
+      const _off=Math.max(0, allKeys.length-12);
+      mo.innerHTML=allKeys.slice(_off).map((k,ix)=>{ const v=ppmCalc[_off+ix], lab=keyLabel(k);
+        if(v==null) return '<div class="ppm-mo"><div class="mn">'+esc(lab)+'</div><div class="mv" style="color:var(--muted,#8190a8)">—</div></div>';
+        const cls=v>tgt?'over':'under', col=v>tgt?'var(--crimson,#fb5a6a)':'var(--green,#34d399)';
+        return '<div class="ppm-mo '+cls+'"><div class="mn">'+esc(lab)+'</div><div class="mv" style="color:'+col+'">'+fmt(v)+'</div></div>';
       }).join('');
     }
   })();
