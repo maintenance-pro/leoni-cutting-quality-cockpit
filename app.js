@@ -894,10 +894,12 @@ function render(){
     const empty=document.getElementById('cxParEmpty'), sub=document.getElementById('cxpar-sub');
     if(!cxp.length){
       charts.cxpareto.data.labels=[]; charts.cxpareto.data.datasets[0].data=[]; charts.cxpareto.data.datasets[1].data=[]; charts.cxpareto._vals=[]; charts.cxpareto.update();
-      if(empty) empty.style.display='block';
+      if(empty) empty.style.display='flex';
+      const _cv=document.getElementById('chCxPareto').closest('.cv'); if(_cv) _cv.style.display='none';
       if(sub) sub.textContent='Aucune connexion saisie — renseigne le champ « Connexion » dans les réclamations';
     } else {
       if(empty) empty.style.display='none';
+      const _cv=document.getElementById('chCxPareto').closest('.cv'); if(_cv) _cv.style.display='';
       if(cxp.length>22) cxp=cxp.slice(0,22);
       const t=cxp.reduce((a,[,v])=>a+v,0); let rn=0;
       const cum=cxp.map(([,v])=>{rn+=v;return t?rn/t*100:0;});
@@ -3122,7 +3124,7 @@ wireChartFilter('chWeek',  ()=>charts.week,  ()=>({d:'day',w:'week',m:'month'}[_
   q.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } });
   d.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); q.focus(); } });
 })();
-/* Fenêtre Pareto NOK — dashboard intégré (iframe isolée, base64, aucun fichier externe) */
+/* Fenêtre Quality Wall — dashboard intégré (iframe isolée, base64, aucun fichier externe) */
 (function(){
   let loaded=false;
   function openNok(){
@@ -3176,7 +3178,7 @@ document.querySelectorAll('.heat-tab').forEach(t=>t.addEventListener('click',()=
       {icon:icon('gear',16),label:'Gestion (référentiels, imports, opérateurs…)',run:()=>clickBtn('openMg')},
       {icon:icon('fileText',16),label:'Rapport imprimable',run:()=>clickBtn('printReport')},
       {icon:icon('mail',16),label:'Envoyer le rapport par e-mail',run:()=>clickBtn('emailReport')},
-      {icon:icon('barchart',16),label:'Pareto NOK',run:()=>clickBtn('nokBtn3')},
+      {icon:icon('barchart',16),label:'Quality Wall',run:()=>clickBtn('nokBtn3')},
       {icon:icon('download',16),label:'Exporter les défauts (Excel)',run:()=>exportClaimsXlsx()},
       {icon:icon('close',16),label:'Réinitialiser tous les filtres',run:()=>clickBtn('resetBtn')},
       {icon: icon(curTheme==='light'?'moon':'sun',16),label:'Basculer le thème '+(curTheme==='light'?'sombre':'clair'),run:()=>clickBtn('themeTgl')},
@@ -3258,10 +3260,10 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const RR=realRows();
     const yr=RR.length?Math.max.apply(null, RR.map(r=>+r.y||0)):new Date().getFullYear();
     const rows=RR.filter(r=>(+r.y||0)===yr);
-    let qty=0; const byNa={}, byMa={}, byPc={}, byWk={}, sites={};
+    let qty=0; const byNa={}, byMa={}, byPc={}, byWk={}, sites={}, machs={};
     rows.forEach(r=>{ const q=+r.q||0; qty+=q;
       if(r.na) byNa[r.na]=(byNa[r.na]||0)+q;
-      if(r.ma && !['Inconnue','NA','—'].includes(r.ma)) byMa[r.ma]=(byMa[r.ma]||0)+q;
+      if(r.ma && !['Inconnue','NA','—'].includes(r.ma)){ byMa[r.ma]=(byMa[r.ma]||0)+q; machs[r.ma]=1; }
       if(r.pc) byPc[r.pc]=(byPc[r.pc]||0)+q;
       if(r.si && r.si!=='Inconnu') sites[r.si]=1;
       if(r.w!=null) byWk[r.w]=(byWk[r.w]||0)+q;
@@ -3269,14 +3271,25 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const top=o=>{ let k=null,v=-1; for(const x in o){ if(o[x]>v){v=o[x];k=x;} } return k!=null?[k,v]:null; };
     const topN=(o,n)=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,n);
     const weeks=Object.keys(byWk).map(Number).sort((a,b)=>a-b).slice(-14).map(w=>({w,v:byWk[w]}));
+    /* PPM TOUJOURS recalculé sur les données réelles (défauts ÷ production, mêmes jours) ;
+       la valeur figée de File 2 (DATA.ppm.globalPPM) ne sert que de secours si aucune
+       production n'est saisie — sinon l'écran TV affiche une valeur périmée. */
+    const ppmY=(typeof ppmForPrefix==='function')?ppmForPrefix(String(yr),rows):null;
+    /* 12 mois de l'année affichée, recalculés mois par mois (DATA.ppm.months de File 2
+       s'arrête au mois de la dernière importation : la frise était incomplète et figée). */
+    let moCur=null; const months=[];
+    for(let i=1;i<=12;i++){ const v=ppmForKey(yr+'-'+String(i).padStart(2,'0')); months.push({mn:MONTHS_FR[i], v}); if(v!=null) moCur={i,v}; }
+    let prodY=0; PROD.forEach(p=>{ if((p.d||'').slice(0,4)===String(yr)) prodY+=(+p.q||0); });
     return { yr, events:rows.length, qty, nat:top(byNa), mac:top(byMa), src:top(byPc), sites:Object.keys(sites).length,
-      macTop5:topN(byMa,5), weeks,
-      ppm:DATA.ppm.globalPPM, tgt:DATA.ppm.ppmTarget,
-      months:DATA.ppm.months.map((mn,i)=>{ const k=`${PPM_YEAR}-${String(i+1).padStart(2,'0')}`; return {mn, v:ppmForKey(k)}; }) };
+      machN:Object.keys(machs).length, avg:rows.length?Math.round(qty/rows.length):0, prodY,
+      macTop5:topN(byMa,5), natTop5:topN(byNa,5), weeks,
+      wkCur:weeks.length?weeks[weeks.length-1]:null, wkPrev:weeks.length>1?weeks[weeks.length-2]:null,
+      moCur, recent:rows.slice().sort((a,b)=>String(b.d).localeCompare(String(a.d))).slice(0,10),
+      ppm:(ppmY!=null?ppmY:DATA.ppm.globalPPM), tgt:DATA.ppm.ppmTarget, months };
   }
   /* Graphiques Chart.js du mode TV — créés une fois (canvas visibles au premier
      rendu), puis simplement mis à jour à chaque rafraîchissement (15 s). */
-  let trendChart=null, machChart=null;
+  let trendChart=null, machChart=null, natChart=null;
   function ensureTvCharts(){
     const tvTooltip={backgroundColor:'#0f1626',borderColor:'#2a3650',borderWidth:1,titleColor:'#eef2f9',bodyColor:'#c4d0e3',padding:10};
     const tc=document.getElementById('tvTrendChart');
@@ -3287,14 +3300,14 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
           scales:{x:{ticks:{color:'#9fb1cc',font:{size:13}},grid:{display:false}},
                    y:{ticks:{color:'#9fb1cc',font:{size:12}},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:true}}}});
     }
-    const mc=document.getElementById('tvMachChart');
-    if(mc && !machChart && typeof Chart!=='undefined'){
-      machChart=new Chart(mc,{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:'#22d3ee',borderRadius:6,maxBarThickness:28}]},
+    const barsH=(id,color,tickSize)=>new Chart(document.getElementById(id),
+      {type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:color,borderRadius:6,maxBarThickness:28}]},
         options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:400},
           plugins:{legend:{display:false},tooltip:tvTooltip},
           scales:{x:{ticks:{color:'#9fb1cc',font:{size:12}},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:true},
-                   y:{ticks:{color:'#eef2f9',font:{size:14,weight:'700'}},grid:{display:false}}}}});
-    }
+                   y:{ticks:{color:'#eef2f9',font:{size:tickSize,weight:'700'}},grid:{display:false}}}}});
+    if(document.getElementById('tvMachChart') && !machChart && typeof Chart!=='undefined') machChart=barsH('tvMachChart','#22d3ee',14);
+    if(document.getElementById('tvNatChart') && !natChart && typeof Chart!=='undefined') natChart=barsH('tvNatChart','#fbbf24',12);
   }
   /* Met à l'échelle le canevas 1920×1080 pour qu'il remplisse l'écran (TV, moniteur,
      fenêtre) sans jamais rogner ni faire défiler — voir le commentaire CSS #tvMode. Ajuste
@@ -3305,11 +3318,27 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const s=Math.min(window.innerWidth/1920, window.innerHeight/1080);
     canvas.style.transform='scale('+s+')';
     const dpr=(window.devicePixelRatio||1)*s;
-    if(trendChart){ trendChart.options.devicePixelRatio=dpr; trendChart.resize(); }
-    if(machChart){ machChart.options.devicePixelRatio=dpr; machChart.resize(); }
+    [trendChart,machChart,natChart].forEach(ch=>{ if(ch){ ch.options.devicePixelRatio=dpr; ch.resize(); } });
+  }
+  /* Couleurs des graphiques accordées au thème (clair/sombre) : les valeurs
+     étaient figées sur le thème sombre et devenaient illisibles en clair. */
+  function tvHexA(h,a){ h=String(h||'').trim(); const m=/^#?([0-9a-f]{6})$/i.exec(h); if(!m) return 'rgba(159,177,204,'+a+')';
+    const n=parseInt(m[1],16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+  function tvApplyTheme(){
+    const cs=getComputedStyle(document.documentElement);
+    const hi=(cs.getPropertyValue('--hi')||'#eef2f9').trim(), mid=(cs.getPropertyValue('--mid')||'#9fb1cc').trim();
+    const grid=tvHexA(hi,.08);
+    [trendChart,machChart,natChart].forEach(ch=>{ if(!ch) return;
+      const sc=ch.options.scales;
+      if(sc.x&&sc.x.ticks) sc.x.ticks.color=(ch===trendChart)?mid:mid;
+      if(sc.y&&sc.y.ticks) sc.y.ticks.color=(ch===trendChart)?mid:hi;
+      if(sc.x&&sc.x.grid&&sc.x.grid.color) sc.x.grid.color=grid;
+      if(sc.y&&sc.y.grid&&sc.y.grid.color) sc.y.grid.color=grid;
+    });
   }
   const F=(typeof fmt==='function')?fmt:(n=>String(n));
   function set(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
+  let tickHtml='';
   function tvRender(){
     const m=document.getElementById('tvMode'); if(!m||m.style.display==='none'||m.style.display==='') return;
     const d=tvCompute(), over=d.ppm>d.tgt;
@@ -3317,20 +3346,55 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const pe=document.getElementById('tvPpm'); if(pe){ pe.textContent=F(Math.round(d.ppm)); pe.style.color=over?'#fb6776':'#4ade80'; }
     set('tvPpmSub','Cible '+F(d.tgt)+' · '+(over?('▲ '+F(Math.round(d.ppm-d.tgt))+' au-dessus'):'▼ sous la cible'));
     const bd=document.getElementById('tvBadge'); if(bd){ bd.className='tv-badge '+(over?'bad':'good'); bd.textContent=over?'HORS CIBLE':'CONFORME'; }
+    /* mini-KPI : PPM du dernier mois calculable */
+    const pm=document.getElementById('tvPpmMo');
+    if(pm){ if(d.moCur){ pm.textContent=F(d.moCur.v); pm.style.color=d.moCur.v>d.tgt?'#fb6776':'#4ade80'; set('tvPpmMoS',MONTHS_FR[d.moCur.i]+' '+d.yr); }
+            else { pm.textContent='—'; pm.style.color=''; set('tvPpmMoS','production non saisie'); } }
+    /* mini-KPI : tendance de la semaine courante vs précédente */
+    const wd=document.getElementById('tvWkD');
+    if(wd){ if(d.wkCur&&d.wkPrev&&d.wkPrev.v>0){ const pct=Math.round((d.wkCur.v-d.wkPrev.v)/d.wkPrev.v*100);
+              wd.textContent=(pct>0?'▲ +':'▼ ')+pct+' %'; wd.style.color=pct>0?'#fb6776':'#4ade80'; set('tvWkDS','S'+d.wkCur.w+' vs S'+d.wkPrev.w); }
+            else if(d.wkCur){ wd.textContent=F(d.wkCur.v)+' pcs'; wd.style.color=''; set('tvWkDS','S'+d.wkCur.w); }
+            else { wd.textContent='—'; wd.style.color=''; set('tvWkDS',''); } }
+    /* mini-KPI : production de l'année (pièces bonnes saisies) */
+    const pr=document.getElementById('tvProd');
+    if(pr){ pr.textContent=d.prodY>0?F(d.prodY):'—'; set('tvProdS',d.prodY>0?'pièces bonnes · '+d.yr:'production non saisie'); }
     set('tvEvents',F(d.events)); set('tvQty',F(d.qty)); set('tvSites',F(d.sites));
+    set('tvMachN',F(d.machN)); set('tvAvg',F(d.avg));
     set('tvMac',d.mac?d.mac[0]:'—'); set('tvMacV',d.mac?F(d.mac[1])+' pcs':'');
     set('tvSrc',d.src?d.src[0]:'—'); set('tvSrcV',d.src?F(d.src[1])+' pcs':'');
     set('tvNat',d.nat?d.nat[0]:'—'); set('tvNatV',d.nat?F(d.nat[1])+' pcs':'');
     ensureTvCharts();
+    tvApplyTheme();
     if(trendChart){ trendChart.data.labels=d.weeks.map(x=>'S'+x.w); trendChart.data.datasets[0].data=d.weeks.map(x=>x.v); trendChart.update(); }
     if(machChart){ machChart.data.labels=d.macTop5.map(x=>x[0]); machChart.data.datasets[0].data=d.macTop5.map(x=>x[1]); machChart.update(); }
+    if(natChart){ const T=(typeof __t==='function')?__t:(s=>s);
+      natChart.data.labels=d.natTop5.map(x=>{ const l=T(String(x[0])); return l.length>28?l.slice(0,27)+'…':l; });
+      natChart.data.datasets[0].data=d.natTop5.map(x=>x[1]); natChart.update(); }
+    set('tvTgtLb','· cible '+F(d.tgt));
     const maxV=Math.max.apply(null,[d.tgt].concat(d.months.map(x=>x.v||0)))||1;
+    const nowMo=(d.yr===new Date().getFullYear())?(new Date().getMonth()+1):0;
     const mb=document.getElementById('tvMonths');
-    if(mb) mb.innerHTML=d.months.map(x=>{
+    if(mb) mb.innerHTML=d.months.map((x,i)=>{
       const h=x.v==null?0:Math.max(2,Math.round(x.v/maxV*100));
       const col=x.v==null?'#3a4a66':(x.v>d.tgt?'#fb6776':'#4ade80');
-      return '<div class="tv-mo"><div class="tv-bar-wrap"><div class="tv-bar" style="height:'+h+'%;background:'+col+'"></div></div><div class="tv-mv">'+(x.v==null?'—':F(x.v))+'</div><div class="tv-mn">'+x.mn+'</div></div>';
+      return '<div class="tv-mo'+(i+1===nowMo?' cur':'')+'"><div class="tv-bar-wrap"><div class="tv-bar" style="height:'+h+'%;background:'+col+'"></div></div><div class="tv-mv">'+(x.v==null?'—':F(x.v))+'</div><div class="tv-mn">'+x.mn+'</div></div>';
     }).join('');
+    /* bandeau des derniers défauts — reconstruit uniquement si le contenu change,
+       pour ne pas faire redémarrer l'animation de défilement toutes les 15 s */
+    const tk=document.getElementById('tvTicker');
+    if(tk){ const E=(typeof esc==='function')?esc:(s=>String(s));
+      const items=d.recent.map(r=>{ const dt=(r.d||'').slice(8,10)+'/'+(r.d||'').slice(5,7);
+        return '<span class="tv-tk-it"><b>'+dt+'</b> · '+E(r.si||'—')+' · '+E(r.ma||'—')+' · '+E(r.na||'—')+' · <span class="tv-tk-q">'+F(+r.q||0)+' pcs</span></span>'; }).join('<span class="tv-tk-sep">•</span>');
+      const half='<span class="tv-tk-half">'+(items||'<span class="tv-tk-it">Aucun défaut enregistré cette année</span>')+'</span>';
+      if(half!==tickHtml){ tickHtml=half; tk.innerHTML=half+half; }
+      /* si le contenu tient dans la fenêtre : pas de défilement ni de doublon */
+      requestAnimationFrame(function(){ const clip=tk.parentElement; if(!clip||!tk.firstElementChild) return;
+        const fits=tk.firstElementChild.offsetWidth<=clip.clientWidth;
+        tk.classList.toggle('tv-tk-static',fits); clip.classList.toggle('tv-tk-fade',!fits);
+        if(fits){ if(tk.children.length>1) tk.removeChild(tk.lastElementChild); }
+        else if(tk.children.length<2) tk.insertAdjacentHTML('beforeend',tickHtml); });
+    }
     const up=document.getElementById('tvUpd'); if(up) up.textContent='Mise à jour '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   }
   function tvClock(){
@@ -3355,16 +3419,16 @@ requestAnimationFrame(()=>requestAnimationFrame(()=>{
    toujours un accès total et ne passent jamais par cette matrice. */
 const QROLE_ORDER=['manager','technicien','tl','utilisateur'];
 const QROLE_LABELS={manager:'Manager Qualité',technicien:'Technicien Qualité',tl:'TL Qualité',utilisateur:'Utilisateur'};
-const MODULE_ORDER=['dash','claim','gestion','report','pnok','d8report'];
-const MODULE_LABELS={dash:'Tableau de bord',claim:'Réclamation',gestion:'Gestion',report:'Rapport',pnok:'Pareto NOK',d8report:'Rapport 8D'};
-const MODULE_ICONS={dash:icon('barchart',14),claim:icon('plus',14),gestion:icon('gear',14),report:icon('fileText',14),pnok:icon('barchart',14),d8report:icon('clipboard',14)};
+const MODULE_ORDER=['dash','claim','prod','gestion','report','pnok','d8report'];
+const MODULE_LABELS={dash:'Tableau de bord',claim:'Réclamation',prod:'Production',gestion:'Gestion',report:'Rapport',pnok:'Quality Wall',d8report:'Rapport 8D'};
+const MODULE_ICONS={dash:icon('barchart',14),claim:icon('plus',14),prod:icon('factory',14),gestion:icon('gear',14),report:icon('fileText',14),pnok:icon('barchart',14),d8report:icon('clipboard',14)};
 const PERM_ORDER=['none','read','edit'];
 const PERM_LABELS={none:'Aucun',read:'Lecture',edit:'Édition'};
 const DEFAULT_ROLE_PERMS={
-  manager:    {dash:'read', claim:'read', gestion:'none', report:'read', pnok:'none', d8report:'edit'},
-  technicien: {dash:'read', claim:'edit', gestion:'none', report:'none', pnok:'none', d8report:'none'},
-  tl:         {dash:'edit', claim:'edit', gestion:'edit', report:'edit', pnok:'edit', d8report:'edit'},
-  utilisateur:{dash:'read', claim:'edit', gestion:'none', report:'none', pnok:'none', d8report:'none'}
+  manager:    {dash:'read', claim:'read', prod:'read', gestion:'none', report:'read', pnok:'none', d8report:'edit'},
+  technicien: {dash:'read', claim:'edit', prod:'edit', gestion:'none', report:'none', pnok:'none', d8report:'none'},
+  tl:         {dash:'edit', claim:'edit', prod:'edit', gestion:'edit', report:'edit', pnok:'edit', d8report:'edit'},
+  utilisateur:{dash:'read', claim:'edit', prod:'edit', gestion:'none', report:'none', pnok:'none', d8report:'none'}
 };
 function mergeRolePerms(saved){
   const out={};
@@ -3410,6 +3474,14 @@ function applyAccessGates(){
   const rmDel=document.getElementById('rm-del'); if(rmDel) rmDel.style.display = dash==='edit' ? '' : 'none';
   const nokBtn=document.getElementById('nokBtn3'); if(nokBtn) nokBtn.style.display = pnok==='none' ? 'none' : '';
   const d8Print=document.getElementById('d8Print'); if(d8Print) d8Print.style.display = d8report==='none' ? 'none' : '';
+  // Widget « Production du jour » (saisie PPM) : Aucun = masqué · Lecture = visible sans saisie · Édition = saisie autorisée
+  const prod=computeModulePerm('prod',isAdmin,myAccount);
+  const prodq=document.querySelector('.prodq');
+  if(prodq){
+    prodq.style.display = prod==='none' ? 'none' : '';
+    const canEditProd = prod==='edit';
+    ['pq-date','pq-qty','pq-add'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = canEditProd ? '' : 'none'; });
+  }
 }
 /* Rendu de la table éditable (modale Comptes & accès) — lecture seule pour les non-admins */
 const PERM_ICONS={none:'🚫',read:'👁',edit:'✏️'};
@@ -3860,6 +3932,11 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     'MILIEU':'ENVIRONMENT','MACHINE':'MACHINE','MÉTHODE':'METHOD','MATIÈRE':'MATERIAL',"MAIN D'ŒUVRE":'MANPOWER','MESURE':'MEASUREMENT','CAUSES':'CAUSES',
     // KPI
     'Événements défaut':'Defect events','Quantité défaut totale':'Total defect quantity','PPM global':'Global PPM','PPM sélection':'Selection PPM','Sites actifs':'Active sites','Machines impactées':'Impacted machines','Nature dominante':'Dominant type',
+    // Mode TV (libellés statiques + bandeau)
+    'Quantité défaut (pcs)':'Defect quantity (pcs)','Moy. pcs / événement':'Avg pcs / event','PPM mois en cours':'Current month PPM','Tendance semaine':'Week trend','Production année':'Year production',
+    'Tendance hebdomadaire — quantité défaut':'Weekly trend — defect quantity','Top machines impactées':'Top impacted machines','Top natures de défaut':'Top defect types','PPM mensuel vs cible':'Monthly PPM vs target',
+    'Derniers défauts':'Latest defects','Aucune connexion saisie pour l’instant':'No connection entered yet','Ce Pareto se construira automatiquement dès que le champ':'This Pareto will build automatically once the field','sera renseigné dans les réclamations.':'is filled in on claims.','Source dominante':'Dominant source','Aucun défaut enregistré cette année':'No defect recorded this year',
+    'Fév':'Feb','Avr':'Apr','Mai':'May','Juin':'Jun','Juil':'Jul','Aoû':'Aug','Déc':'Dec',
     // Panneau PPM
     'PPM actuel':'Current PPM','Cible':'Target','Écart':'Gap','PPM':'PPM','Aucune donnée':'No data',
     // Sous-titres divers
@@ -3877,6 +3954,13 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     // Login
     'Se connecter':'Sign in','Mot de passe':'Password','Accès réservé · authentification requise':'Restricted access · authentication required',
     'Quality Cockpit — Cutting':'Quality Cockpit — Cutting',
+    // Login — bannière d'accueil (photo réelle + texte)
+    'La qualité':'Quality','Notre engagement':'Our commitment','Votre performance':'Your performance',
+    'Chaque détail contrôlé. Chaque sertissage':'Every detail inspected. Every crimp','fiable.':'reliable.',
+    'Qualité':'Quality','Zéro défaut':'Zero defect','Préventive':'Preventive','Optimisée':'Optimized','Méthode':'Method','Maîtrisée':'Controlled',
+    'Analyse précise':'Precise analysis','Des résultats':'Excellent','excellents':'results',
+    'Données synchronisées en temps réel · LEONI Wiring Systems':'Real-time synced data · LEONI Wiring Systems',
+    'Mentions légales':'Legal notice','Confidentialité':'Privacy','Support technique':'Technical support',
     // QRQC
     'Archive QRQC':'QRQC archive','Aucune fiche QRQC pour l\'instant.':'No QRQC sheet yet.',
     // Gestion
@@ -3894,7 +3978,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     [/base terrain/gi,'field data'],[/Mise à jour/g,'Updated'],[/Édité le/gi,'Edited on'],
     [/hors « Non renseigné »/g,'excl. "Not specified"'],[/« Non renseigné »/g,'"Not specified"'],[/Non renseigné/gi,'Not specified'],[/Non précisé/gi,'Not specified'],[/Inconnues?\b/gi,'Unknown'],
     [/Aucune donnée/gi,'No data'],[/Aucun élément/gi,'No item'],[/Aucune réclamation/gi,'No claim'],[/Aucune production/gi,'No production'],
-    [/production saisie/gi,'production entered'],[/production non saisie/gi,'no production entered'],[/saisis la production/gi,'enter production'],[/saisie prod\./gi,'from production'],
+    [/production saisie/gi,'production entered'],[/pièces bonnes/gi,'good parts'],[/production non saisie/gi,'no production entered'],[/saisis la production/gi,'enter production'],[/saisie prod\./gi,'from production'],
     [/au-dessus de la cible/gi,'above target'],[/au-dessus cible/gi,'above target'],[/sous la cible/gi,'below target'],[/sous objectif/gi,'below target'],[/> cible/g,'> target'],[/≤ cible/g,'≤ target'],
     [/lignes? ×/gi,'rows ×'],[/cellule/gi,'cell'],[/vs cible/gi,'vs target'],[/\bCible\b/g,'Target'],[/\bcible\b/g,'target'],
     [/Scrap réel/gi,'Actual scrap'],[/PPM réel/gi,'Actual PPM'],[/PPM calculé/gi,'Computed PPM'],
@@ -3953,14 +4037,48 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
   }
   function apply(){
     const lbl=document.getElementById('langLabel'); if(lbl) lbl.textContent=(LANG==='fr'?'EN':'FR');
+    const flt=document.getElementById('fbLangTxt'); if(flt) flt.textContent=(LANG==='fr'?'EN':'FR');
     try{ document.documentElement.lang=LANG; }catch(e){}
     if(LANG==='en'){ try{ translateTree(document.body); }catch(e){} startObserver(); }
   }
   function wire(){
-    const b=document.getElementById('langTgl');
-    if(b) b.addEventListener('click',()=>{ const nx=(LANG==='en'?'fr':'en'); try{ localStorage.setItem(LKEY,nx); }catch(e){} location.reload(); });
+    const toggle=()=>{ const nx=(LANG==='en'?'fr':'en'); try{ localStorage.setItem(LKEY,nx); }catch(e){} location.reload(); };
+    const b=document.getElementById('langTgl'); if(b) b.addEventListener('click',toggle);
+    const fb=document.getElementById('fbLang'); if(fb) fb.addEventListener('click',toggle);
     apply();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',wire); else wire();
+})();
+
+/* ============================================================
+   HORLOGE — en haut de l'écran de connexion (date + heure en direct).
+   Suit la langue active (FR/EN) ; met à jour uniquement le texte pour
+   ne pas perturber l'observateur de traduction.
+   ============================================================ */
+(function(){
+  let timeEl=null, dateEl=null;
+  const two=n=>(n<10?'0':'')+n;
+  function ensure(){
+    const box=document.getElementById('fbClock'); if(!box) return null;
+    if(!timeEl){
+      timeEl=document.createElement('span'); timeEl.className='fb-clock-time';
+      dateEl=document.createElement('span'); dateEl.className='fb-clock-date';
+      box.appendChild(timeEl); box.appendChild(dateEl);
+    }
+    return box;
+  }
+  function tick(){
+    if(!ensure()) return;
+    const lang=(window.__lang&&window.__lang())||document.documentElement.lang||'fr';
+    const loc=lang==='en'?'en-GB':'fr-FR';
+    const d=new Date();
+    let date; try{ date=d.toLocaleDateString(loc,{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ date=d.toLocaleDateString(); }
+    date=date.charAt(0).toUpperCase()+date.slice(1);
+    const time=two(d.getHours())+':'+two(d.getMinutes())+':'+two(d.getSeconds());
+    if(timeEl.textContent!==time) timeEl.textContent=time;
+    if(dateEl.textContent!==date) dateEl.textContent=date;
+  }
+  function start(){ tick(); setInterval(tick,1000); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start); else start();
 })();
 
