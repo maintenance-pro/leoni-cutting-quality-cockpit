@@ -53,6 +53,7 @@ const ICONS = {
   undo:'<path d="M6 8H16a5 5 0 0 1 0 10h-2"/><polyline points="9,4.5 6,8 9,11.5"/>',
   bell:'<path d="M6 10.5a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14.5 6 10.5z"/><path d="M10 19a2 2 0 0 0 4 0"/>',
   scissors:'<circle cx="6.5" cy="6.5" r="2.5"/><circle cx="6.5" cy="17.5" r="2.5"/><line x1="8.3" y1="8.3" x2="20" y2="19.5"/><line x1="20" y1="4.5" x2="12.5" y2="12"/><line x1="8.3" y1="15.7" x2="11" y2="13"/>',
+  archive:'<rect x="3" y="4" width="18" height="4.5" rx="1"/><path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5"/><line x1="10" y1="12.5" x2="14" y2="12.5"/>',
   trash:'<path d="M4.5 7h15"/><path d="M9.5 7V4.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7l1 12.5a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8L17.5 7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
   edit:'<path d="M4 20l.9-4.2L15.8 5a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.2 19.1 4 20z"/><line x1="14" y1="6.8" x2="17.2" y2="10"/>',
   eye:'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
@@ -1715,28 +1716,40 @@ function updateSiteWheel(st){
 function renderD8Trend(){
   const el=document.getElementById('d8TrendWheel'), empty=document.getElementById('d8trendEmpty'), sub=document.getElementById('d8trend-sub');
   if(!el) return;
-  const arch=lsGet(LS.d8archive,[]);
+  const arch=d8ArchList();
   if(!arch.length){ el.innerHTML=''; el.style.display='none'; if(empty) empty.style.display='block'; if(sub) sub.textContent='Agrégé sur tous les 8D archivés'; return; }
   el.style.display=''; if(empty) empty.style.display='none';
   const totals={}; M_ORDER.forEach(k=>totals[k]=0);
   arch.forEach(a=>{ M_ORDER.forEach(k=>{ totals[k]+=(a.counts&&a.counts[k])||0; }); });
   const items=M_ORDER.map(k=>({key:k,label:M_KEYS[k].split(' / ')[0],icon:M_ICON[k],color:`var(${M_COLORVAR[k]})`,value:totals[k]}));
   el.innerHTML=buildWheelSVG(items,{id:'d8trend',attr:'data-m6',maxWedges:6,centerLabel:'CAUSES',formatN:n=>n+' cause'+(n>1?'s':'')});
-  if(sub) sub.textContent=`${fmt(arch.length)} 8D archivé(s) · dernier le ${esc(new Date(arch[arch.length-1].ts).toLocaleDateString('fr-FR'))}`;
+  const last=Math.max(...arch.map(a=>a.ts||0));
+  if(sub) sub.textContent=`${fmt(arch.length)} 8D archivé(s) · dernier le ${new Date(last).toLocaleDateString('fr-FR')}`;
 }
-/* Archive la répartition causale (D4, comptage des causes listées par catégorie 6M)
-   du 8D actuellement ouvert, pour qu'elle vienne alimenter la tendance ci-dessus. */
+/* Archive le 8D actuellement ouvert : le document complet (data, réouvrable depuis
+   « Archive 8D ») + sa répartition causale (D4, comptage des causes listées par
+   catégorie 6M) qui alimente la tendance ci-dessus. Un 8D déjà archivé sous le même
+   N° est remplacé, pour ne pas compter deux fois ses causes dans la tendance. */
 function archiveCurrent8D(){
   const o=serialize8D();
   const counts={}; let total=0;
   M_ORDER.forEach(k=>{ const n=(o.fish&&o.fish[k]||[]).filter(v=>String(v).trim()).length; counts[k]=n; total+=n; });
   if(!total){ toast('Aucune cause listée en D4 — complète l’analyse causale avant d’archiver',true); return; }
-  const arch=lsGet(LS.d8archive,[]);
-  arch.push({ts:Date.now(),ref:o.ref||'',problem:o.w_quoi||'',where:o.w_ou||'',counts});
+  const arch=d8ArchList();
+  const ref=(o.ref||'').trim();
+  const entry={id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),who:auditWho(),
+    ref,problem:o.w_quoi||'',where:o.w_ou||'',client:o.client||'',site:o.site||'',status:o.status||'',dopen:o.dopen||'',dclose:o.dclose||'',counts,data:o};
+  const i=ref?arch.findIndex(a=>(a.ref||'').trim()===ref):-1;
+  if(i>=0){
+    if(!confirm(`Le 8D « ${ref} » est déjà dans l'archive.\nRemplacer la version archivée par la version actuelle ?`)) return;
+    if(arch[i].id) entry.id=arch[i].id;
+    arch.splice(i,1);
+  }
+  arch.push(entry);
   if(arch.length>300) arch.splice(0,arch.length-300);
-  lsSet(LS.d8archive,arch);
-  renderD8Trend();
-  toast('8D archivé — tendance causes racines 6M mise à jour');
+  if(!lsSet(LS.d8archive,arch)){ toast('Stockage local plein — 8D non archivé (exporte-le en JSON)',true); return; }
+  renderD8Trend(); renderD8Arch();
+  toast(i>=0?'Archive 8D mise à jour':'8D archivé — consultable dans « Archive 8D »');
 }
 function wireWheelFilter(containerId,attr,dimKey){
   const el=document.getElementById(containerId); if(!el) return;
@@ -1947,6 +1960,95 @@ document.getElementById('d8File').addEventListener('change',e=>{
   rd.onload=()=>{ try{ deserialize8D(JSON.parse(rd.result)); toast('8D importé avec succès'); }catch(err){ toast('Fichier JSON invalide',true); } };
   rd.readAsText(f); e.target.value='';
 });
+
+/* ---------------- ARCHIVE 8D (consultation) ----------------
+   Liste de tous les 8D archivés (« Archiver ce 8D ») : recherche, réouverture dans
+   l'atelier, export JSON, suppression. Les entrées archivées avant l'enregistrement
+   du document complet n'ont que la répartition causale D4 : elles restent comptées
+   dans la tendance 6M mais ne peuvent pas être rouvertes.
+   Accès : module « Rapport 8D » — Lecture = consulter/rouvrir/exporter, Édition = supprimer. */
+// La synchro Realtime Database peut renvoyer un tableau sous forme d'objet {index: valeur}.
+function d8ArchList(){
+  const v=lsGet(LS.d8archive,[]);
+  const arr=Array.isArray(v)?v:(v&&typeof v==='object')?Object.keys(v).sort((a,b)=>(+a)-(+b)).map(k=>v[k]):[];
+  return arr.filter(a=>a&&typeof a==='object');
+}
+const d8ArchKey=a=>a.id||('t'+a.ts);
+const d8ArchFind=k=>d8ArchList().find(a=>d8ArchKey(a)===k);
+const D8_ST_CLS={'Ouvert':'st-open','En cours':'st-prog','En validation':'st-val','Clôturé':'st-done'};
+const isoFr=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'')?s.split('-').reverse().join('/'):(s||'—');
+let _d8ArchQ='';
+// mode local (cloud indisponible) : aucune restriction, comme le reste de l'application
+function d8ArchPerm(){ if(!window._fbReady && !window._myAccount) return 'edit'; try{ return computeModulePerm('d8report',!!window._isAdmin,window._myAccount||null); }catch(e){ return 'read'; } }
+function renderD8Arch(){
+  const box=document.getElementById('d8ArchList'); if(!box) return;
+  const all=d8ArchList().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const q=_d8ArchQ.trim().toLowerCase();
+  const list=q?all.filter(a=>[a.ref,a.problem,a.client,a.site,a.where,a.status,a.who].join(' ').toLowerCase().includes(q)):all;
+  const cnt=document.getElementById('d8ArchCount');
+  if(cnt) cnt.textContent=all.length?(q?`${list.length} / ${all.length}`:`${all.length} 8D archivé${all.length>1?'s':''}`):'';
+  const empty=document.getElementById('d8ArchEmpty');
+  if(empty){
+    empty.style.display=list.length?'none':'block';
+    empty.textContent=all.length?'Aucun 8D ne correspond à la recherche.':'Aucun 8D archivé pour l’instant. Dans l’Atelier 8D, clique « Archiver ce 8D » une fois l’analyse causale (D4) renseignée.';
+  }
+  const canDel=d8ArchPerm()==='edit';
+  box.innerHTML=list.map(a=>{
+    const k=esc(d8ArchKey(a)), st=a.status||'';
+    const causes=M_ORDER.reduce((n,m)=>n+((a.counts&&a.counts[m])||0),0);
+    const place=a.site||a.where||'';
+    return `<div class="d8a-card">
+      <div class="d8a-top"><span class="d8a-ref" title="${esc(a.ref||'')}">${esc(a.ref||'8D sans numéro')}</span>${st?`<span class="d8a-st ${D8_ST_CLS[st]||''}">${esc(st)}</span>`:''}</div>
+      <div class="d8a-pb" title="${esc(a.problem||'')}">${esc(a.problem||'Problème non renseigné')}</div>
+      <div class="d8a-meta">${a.client?`<span>${icon('users',12)} ${esc(a.client)}</span>`:''}${place?`<span title="${esc(place)}">${icon('factory',12)} ${esc(place)}</span>`:''}<span>${icon('target',12)} 6M · ${causes} cause${causes>1?'s':''}</span></div>
+      ${a.data?`<div class="d8a-dates"><span><span class="k">Ouverture</span> ${esc(isoFr(a.dopen))}</span><span><span class="k">Clôture</span> ${esc(isoFr(a.dclose))}</span></div>`:''}
+      <div class="d8a-foot"><span class="k">Archivé le</span> ${new Date(a.ts||0).toLocaleDateString('fr-FR')}${a.who?' · '+esc(a.who):''}</div>
+      <div class="d8a-act">${a.data
+        ?`<button type="button" class="d8-tbtn go" data-d8open="${k}">${icon('eye',13)} Ouvrir</button><button type="button" class="d8-tbtn" data-d8exp="${k}" title="Exporter ce 8D en JSON">${icon('download',13)} JSON</button>`
+        :`<span class="d8a-legacy" title="Archivé avant l’enregistrement du 8D complet : seule la répartition causale D4 a été conservée">Résumé D4 uniquement</span>`}
+        ${canDel?`<button type="button" class="d8-tbtn d8a-del" data-d8del="${k}" title="Supprimer de l'archive" aria-label="Supprimer de l'archive">${icon('trash',13)}</button>`:''}</div>
+    </div>`;
+  }).join('');
+}
+function openD8Arch(){
+  _d8ArchQ=''; const s=document.getElementById('d8ArchSearch'); if(s) s.value='';
+  renderD8Arch(); document.getElementById('d8ArchOverlay').classList.add('show');
+}
+function closeD8Arch(){ document.getElementById('d8ArchOverlay').classList.remove('show'); }
+function d8ArchOpen(k){
+  const a=d8ArchFind(k); if(!a||!a.data){ toast('8D introuvable dans l’archive',true); return; }
+  if(d8Built && !confirm(`Ouvrir « ${a.ref||'8D'} » dans l'atelier ?\nLe contenu actuel de l'atelier sera remplacé (archive-le ou exporte-le avant si besoin).`)) return;
+  prefill8D(null); deserialize8D(a.data);
+  closeD8Arch();
+  document.getElementById('d8Overlay').classList.add('show'); document.body.classList.add('d8-open'); document.getElementById('d8Doc').scrollTop=0;
+  toast('8D « '+(a.ref||'')+' » chargé depuis l’archive');
+}
+function d8ArchExport(k){
+  const a=d8ArchFind(k); if(!a||!a.data) return;
+  const ref=(a.ref||'8D').replace(/[^\w\-]/g,'_');
+  const blob=new Blob([JSON.stringify(a.data,null,2)],{type:'application/json'});
+  const l=document.createElement('a');l.href=URL.createObjectURL(blob);l.download=ref+'.json';l.click();setTimeout(()=>URL.revokeObjectURL(l.href),1500);
+  toast('8D exporté : '+ref+'.json');
+}
+function d8ArchDelete(k){
+  const a=d8ArchFind(k); if(!a) return;
+  if(!confirm(`Supprimer « ${a.ref||'8D'} » de l'archive ?\nSes causes seront retirées de la tendance 6M. Action définitive.`)) return;
+  lsSet(LS.d8archive,d8ArchList().filter(x=>d8ArchKey(x)!==k));
+  renderD8Trend(); renderD8Arch();
+  toast('8D supprimé de l’archive');
+}
+document.getElementById('d8ArchList').addEventListener('click',e=>{
+  const b=e.target.closest('[data-d8open],[data-d8exp],[data-d8del]'); if(!b) return;
+  if(b.dataset.d8open) d8ArchOpen(b.dataset.d8open);
+  else if(b.dataset.d8exp) d8ArchExport(b.dataset.d8exp);
+  else if(d8ArchPerm()==='edit') d8ArchDelete(b.dataset.d8del);
+});
+document.getElementById('d8ArchSearch').addEventListener('input',e=>{ _d8ArchQ=e.target.value; renderD8Arch(); });
+['openD8Arch','d8OpenArch','d8trendArch'].forEach(id=>{ const b=document.getElementById(id); if(b) b.addEventListener('click',openD8Arch); });
+document.getElementById('d8ArchClose').addEventListener('click',closeD8Arch);
+document.getElementById('d8ArchOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeD8Arch(); });
+// capture : Échap ferme l'archive seule, sans fermer aussi l'atelier 8D ouvert dessous
+window.addEventListener('keydown',e=>{ if(e.key==='Escape' && document.getElementById('d8ArchOverlay').classList.contains('show')){ e.stopPropagation(); closeD8Arch(); } },true);
 
 /* ---------------- BOOT ---------------- */
 document.getElementById('m-plant').textContent=DATA.meta.plant;
@@ -3187,6 +3289,7 @@ document.querySelectorAll('.heat-tab').forEach(t=>t.addEventListener('click',()=
     ];
     if(typeof _tabletMode!=='undefined') cmds.push({icon:icon('tablet',16),label:'Basculer le mode tablette',run:()=>clickBtn('tabletTgl')});
     if(visible('open8D')) cmds.push({icon:icon('clipboard',16),label:'Atelier 8D — problème prioritaire',run:()=>clickBtn('open8D')});
+    if(visible('openD8Arch')) cmds.push({icon:icon('archive',16),label:'Archive 8D',run:()=>clickBtn('openD8Arch')});
     if(visible('fbAccounts')) cmds.push({icon:icon('userCircle',16),label:'Comptes & accès',run:()=>clickBtn('fbAccounts')});
     if(visible('fbSignOut')) cmds.push({icon:'⎋',label:'Se déconnecter',run:()=>clickBtn('fbSignOut')});
     DIMS.forEach(d=>{ if(!d.hidden && d._btn) cmds.push({icon:'▾',label:'Filtre : '+d.label,run:()=>d._btn.click()}); });
@@ -3474,6 +3577,9 @@ function applyAccessGates(){
   const rmDel=document.getElementById('rm-del'); if(rmDel) rmDel.style.display = dash==='edit' ? '' : 'none';
   const nokBtn=document.getElementById('nokBtn3'); if(nokBtn) nokBtn.style.display = pnok==='none' ? 'none' : '';
   const d8Print=document.getElementById('d8Print'); if(d8Print) d8Print.style.display = d8report==='none' ? 'none' : '';
+  ['openD8Arch','d8OpenArch','d8trendArch'].forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display = d8report==='none' ? 'none' : ''; });
+  const d8ArchOv=document.getElementById('d8ArchOverlay');
+  if(d8ArchOv && d8ArchOv.classList.contains('show')){ if(d8report==='none') d8ArchOv.classList.remove('show'); else renderD8Arch(); }
   // Widget « Production du jour » (saisie PPM) : Aucun = masqué · Lecture = visible sans saisie · Édition = saisie autorisée
   const prod=computeModulePerm('prod',isAdmin,myAccount);
   const prodq=document.querySelector('.prodq');
@@ -3587,7 +3693,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
       return;
     }
     if(key===LS.d8archive){
-      try{ renderD8Trend(); }catch(e){}
+      try{ renderD8Trend(); renderD8Arch(); }catch(e){}
       return;
     }
     if(key===LS.qrqc){
@@ -3963,6 +4069,14 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     'Mentions légales':'Legal notice','Confidentialité':'Privacy','Support technique':'Technical support',
     // QRQC
     'Archive QRQC':'QRQC archive','Aucune fiche QRQC pour l\'instant.':'No QRQC sheet yet.',
+    // Archive 8D
+    'Archive 8D':'8D archive','Archive':'Archive',"Voir l'archive":'View archive','Rechercher un 8D…':'Search an 8D…','Ouvrir':'Open','Résumé D4 uniquement':'D4 summary only',
+    'Ouverture':'Opened','Clôture':'Closed','Archivé le':'Archived on','8D sans numéro':'Unnumbered 8D','Problème non renseigné':'Problem not specified',
+    'Ouvert':'Open','En cours':'In progress','En validation':'Under validation','Clôturé':'Closed',
+    'Aucun 8D ne correspond à la recherche.':'No 8D matches the search.',
+    'Aucun 8D archivé pour l’instant. Dans l’Atelier 8D, clique « Archiver ce 8D » une fois l’analyse causale (D4) renseignée.':'No archived 8D yet. In the 8D Workshop, click “Archive this 8D” once the root-cause analysis (D4) is filled in.',
+    "Archive des 8D : consulter, rouvrir, exporter":'8D archive: view, reopen, export','Voir tous les 8D archivés':'View all archived 8Ds','Exporter ce 8D en JSON':'Export this 8D as JSON',
+    "Supprimer de l'archive":'Delete from archive','Agrégé sur tous les 8D archivés':'Aggregated over all archived 8Ds',
     // Gestion
     'Gestion & paramètres':'Settings & parameters','Données':'Data','Opérateurs':'Operators','Superviseurs':'Supervisors','Référentiels':'Reference lists','Journal':'Audit log','Corbeille':'Trash'
   };
@@ -3972,6 +4086,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
   const PAT=[
     [/⇲ double-clic = filtrer/g,'⇲ double-click = filter'],[/double-clic = filtrer/g,'double-click = filter'],
     [/(\d+)\s*derniers affichés/g,'last $1 shown'],
+    [/8D archivé\(s\)/g,'archived 8D(s)'],[/8D archivés?/g,'archived 8D'],[/dernier le/g,'latest on'],
     [/\bsemaines?\b/gi,'weeks'],[/\bjour\(s\)/gi,'day(s)'],[/\bjours?\b/gi,'days'],[/\bmois\b/gi,'months'],[/\bannée\(s\)/gi,'year(s)'],[/\bannées?\b/gi,'years'],
     [/moy\./g,'avg.'],[/\/ événement/g,'/ event'],[/événement\(s\)/gi,'event(s)'],[/événements?/gi,'events'],
     [/pièces? bonnes/gi,'good parts'],[/pièces? rebutées?/gi,'scrapped parts'],[/rebutées?/gi,'scrapped'],
