@@ -436,6 +436,7 @@ body{min-height:100vh}
 .qrqc-meta{padding:9px 11px}
 .qrqc-t{font-weight:600;font-size:12.5px;color:var(--hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qrqc-d{font-size:11px;color:var(--dim);margin-top:2px}
+.qrqc-pend{display:inline-block;margin-top:5px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;color:var(--amber);background:color-mix(in srgb,var(--amber) 14%,transparent)}
 .qrqc-del{position:absolute;top:7px;right:7px;width:28px;height:28px;border-radius:8px;border:none;cursor:pointer;background:rgba(10,14,24,.72);color:#fff;display:grid;place-items:center;opacity:0;transition:opacity .15s,background .15s}
 .qrqc-card:hover .qrqc-del{opacity:1}
 .qrqc-del:hover{background:var(--crimson)}

@@ -3039,73 +3039,179 @@ document.getElementById('mgImportFile').addEventListener('change',e=>{ if(e.targ
 document.getElementById('mgReset').addEventListener('click',resetDB);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && mgOverlay.classList.contains('show')) closeMg(); });
 
-/* ================= ARCHIVE QRQC (fiches scannées) ================= */
-let QRQC = lsGet(LS.qrqc, []);
-/* compresse une image en JPEG dataURL (max ~1200 px) pour un stockage/synchro léger */
-function qrqcCompress(file){
+/* ================= ARCHIVE QRQC (fiches scannées) =================
+   Les fiches (images/PDF en base64) ne passent PLUS par localStorage : son quota (~5 Mo) était
+   saturé après quelques scans, et lsSet abandonnait alors AUSSI l'envoi au cloud → la fiche
+   s'affichait puis disparaissait au rechargement. Désormais :
+   - cloud : cockpit/lwsq_qrqc_v1/{id}    = fiche légère (titre, date, miniature), écoutée en temps réel ;
+             cockpit/lwsq_qrqc_files/{id} = fichier complet, téléchargé seulement à l'ouverture.
+             Chaque ajout/suppression n'écrit QUE sa fiche (plus de ré-envoi de toute l'archive).
+   - local : IndexedDB (quota bien plus large) = cache hors-ligne + fiches pas encore confirmées
+             par le cloud (pending), renvoyées automatiquement dès que le cloud répond. */
+const QRQC_FILES = 'lwsq_qrqc_files';
+let QRQC = [];
+const _qrqcInflight = new Set(), _qrqcFailed = new Set(), _qrqcKey = new Map(), _qrqcMemFile = new Map(), _qrqcRecovered = new Set();
+let _qrqcMigrated = false;
+const qrqcDB = (()=>{
+  let p=null;
+  function open(){
+    if(!p) p=new Promise((res,rej)=>{
+      if(!window.indexedDB) return rej(new Error('IndexedDB indisponible'));
+      const rq=indexedDB.open('lwsq_qrqc',1);
+      rq.onupgradeneeded=()=>{ const d=rq.result; d.createObjectStore('meta',{keyPath:'id'}); d.createObjectStore('files'); };
+      rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+    });
+    return p;
+  }
+  // une transaction sur les deux magasins ; fn(meta, files) y place ses requêtes
+  function tx(mode,fn){
+    return open().then(d=>new Promise((res,rej)=>{
+      const t=d.transaction(['meta','files'],mode), out=fn(t.objectStore('meta'),t.objectStore('files'));
+      t.oncomplete=()=>res(out&&out.result); t.onerror=t.onabort=()=>rej(t.error);
+    }));
+  }
+  return {
+    all:()=>tx('readonly',m=>m.getAll()),
+    put:(meta,file)=>tx('readwrite',(m,f)=>{ m.put(meta); if(file) f.put(file,meta.id); }),
+    putMany:list=>tx('readwrite',m=>{ list.forEach(x=>m.put(x)); }),
+    del:id=>tx('readwrite',(m,f)=>{ m.delete(id); f.delete(id); }),
+    file:id=>tx('readonly',(m,f)=>f.get(id)),
+    putFile:(id,file)=>tx('readwrite',(m,f)=>{ f.put(file,id); })
+  };
+})();
+/* redimensionne une image (dataURL) en JPEG dataURL, MAX px sur le grand côté */
+function qrqcJpeg(src,MAX,q){
   return new Promise((resolve,reject)=>{
-    const rd=new FileReader();
-    rd.onerror=()=>reject(new Error('read'));
-    rd.onload=()=>{
-      const img=new Image();
-      img.onerror=()=>reject(new Error('img'));
-      img.onload=()=>{
-        const MAX=1200; let w=img.naturalWidth||img.width||1, h=img.naturalHeight||img.height||1;
-        const s=Math.min(1, MAX/Math.max(w,h)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
-        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-        cv.getContext('2d').drawImage(img,0,0,w,h);
-        try{ resolve(cv.toDataURL('image/jpeg',0.62)); }catch(err){ reject(err); }
-      };
-      img.src=rd.result;
+    const img=new Image(), to=setTimeout(()=>reject(new Error('timeout')),15000);
+    img.onerror=()=>{ clearTimeout(to); reject(new Error('img')); };
+    img.onload=()=>{
+      clearTimeout(to);
+      let w=img.naturalWidth||img.width||1, h=img.naturalHeight||img.height||1;
+      const s=Math.min(1, MAX/Math.max(w,h)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      try{ resolve(cv.toDataURL('image/jpeg',q)); }catch(err){ reject(err); }
     };
-    rd.readAsDataURL(file);
+    img.src=src;
   });
 }
-function qrqcSave(){ lsSet(LS.qrqc, QRQC); }
 function qrqcReadDataURL(file){
   return new Promise((resolve,reject)=>{ const rd=new FileReader(); rd.onerror=()=>reject(new Error('read')); rd.onload=()=>resolve(rd.result); rd.readAsDataURL(file); });
+}
+/* compresse une image en JPEG dataURL (max ~1200 px) pour un stockage/synchro léger */
+function qrqcCompress(file){ return qrqcReadDataURL(file).then(src=>qrqcJpeg(src,1200,0.62)); }
+function qrqcThumb(src){ return qrqcJpeg(src,360,0.6); }
+/* fiche légère telle que stockée dans le cloud (jamais le fichier lui-même) */
+function qrqcMeta(it){
+  const m={ id:String(it.id), title:String(it.title||''), d:String(it.d||''), kind:it.kind==='pdf'?'pdf':'image', ts:+it.ts||0, who:String(it.who||'') };
+  if(it.th) m.th=String(it.th);
+  return m;
+}
+function qrqcCloud(){ return (window._fbReady && window._db) ? window._db : null; }
+function qrqcErr(err){ return (err&&(err.code||err.message))||'erreur'; }
+async function qrqcFile(id){
+  if(_qrqcMemFile.has(id)) return _qrqcMemFile.get(id);
+  try{ const f=await qrqcDB.file(id); if(f) return f; }catch(e){}
+  const db=qrqcCloud(); if(!db) return null;
+  const f=(await db.ref('cockpit/'+QRQC_FILES+'/'+id).once('value')).val();
+  if(f) qrqcDB.putFile(id,f).catch(()=>{});
+  return f;
+}
+/* envoie UNE fiche (fiche légère + fichier) en une écriture atomique ; true si le serveur a confirmé */
+function qrqcPush(id){
+  const db=qrqcCloud();
+  if(!db || _qrqcInflight.has(id)) return Promise.resolve(false);
+  _qrqcInflight.add(id);
+  return qrqcFile(id).then(file=>{
+    const it=QRQC.find(x=>x.id===id);
+    if(!it) return false;                                  // supprimée entre-temps
+    if(!file) throw new Error('fichier local introuvable');
+    const up={}; up[QRQC_FILES+'/'+id]=file; up[LS.qrqc+'/'+id]=qrqcMeta(it);
+    return db.ref('cockpit').update(up).then(()=>true);
+  }).then(ok=>{
+    _qrqcInflight.delete(id);
+    const it=QRQC.find(x=>x.id===id);
+    if(ok && it && it.pending){ delete it.pending; _qrqcMemFile.delete(id); qrqcDB.put(it).catch(()=>{}); renderQRQC(); }
+    if(ok && it && _qrqcRecovered.delete(id)) toast('Fiche QRQC récupérée de ce poste et remise dans l’archive : '+(it.title||''));
+    return ok;
+  }, err=>{
+    _qrqcInflight.delete(id); _qrqcFailed.add(id);       // pas de nouvel essai en boucle dans cette session
+    console.warn('QRQC · synchro échouée', id, err);
+    toast('Fiche QRQC non synchronisée ('+qrqcErr(err)+') — nouvel essai au prochain chargement',true);
+    return false;
+  });
 }
 async function qrqcAddFile(file){
   if(!file) return;
   const isImg=/^image\//.test(file.type||'');
   const isPdf=/pdf/i.test(file.type||'')||/\.pdf$/i.test(file.name||'');
   if(!isImg && !isPdf){ toast('Choisis une image ou un PDF',true); return; }
-  let img, kind;
+  let data, th='', kind;
   if(isImg){
     toast('Traitement de l’image…');
-    try{ img=await qrqcCompress(file); }catch(e){ toast('Image illisible',true); return; }
+    try{ data=await qrqcCompress(file); }catch(e){ toast('Image illisible',true); return; }
+    try{ th=await qrqcThumb(data); }catch(e){}
     kind='image';
   } else {
     if(file.size > 4*1024*1024){ toast('PDF trop volumineux (max 4 Mo) — réduis-le ou scanne en image',true); return; }
     toast('Lecture du PDF…');
-    try{ img=await qrqcReadDataURL(file); }catch(e){ toast('PDF illisible',true); return; }
+    try{ data=await qrqcReadDataURL(file); }catch(e){ toast('PDF illisible',true); return; }
     kind='pdf';
   }
   const title=(prompt('Titre / référence de la fiche QRQC :','QRQC '+todayLocal())||'').trim() || ('QRQC '+todayLocal());
-  QRQC.push({ id:'q'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, d:todayLocal(), img, kind, ts:Date.now(), who:(typeof auditWho==='function'?auditWho():'') });
-  qrqcSave(); renderQRQC();
-  toast('Fiche QRQC ajoutée'+(window._fbReady?' · synchronisée ✓':''));
+  const it={ id:'q'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), title, d:todayLocal(), kind, ts:Date.now(), who:auditWho(), pending:1 };
+  if(th) it.th=th;
+  QRQC.push(it); renderQRQC();
+  let local=true;
+  try{ await qrqcDB.put(it,data); }catch(e){ local=false; _qrqcMemFile.set(it.id,data); }
+  auditLog(AUDIT_LABELS[LS.qrqc],'ajout · '+title);
+  if(!qrqcCloud()){
+    if(local) toast('Fiche QRQC enregistrée sur ce poste — envoyée au cloud à la prochaine connexion');
+    else toast('Fiche QRQC gardée en mémoire seulement (stockage local indisponible, cloud hors ligne)',true);
+    return;
+  }
+  toast('Fiche QRQC enregistrée · envoi au cloud…');
+  if(await qrqcPush(it.id)) toast('Fiche QRQC synchronisée ✓');
 }
 function qrqcDelete(id){
   const it=QRQC.find(x=>x.id===id); if(!it) return;
   if(!confirm('Supprimer cette fiche QRQC ?\n\n'+(it.title||''))) return;
-  QRQC=QRQC.filter(x=>x.id!==id); qrqcSave(); renderQRQC();
+  QRQC=QRQC.filter(x=>x.id!==id); renderQRQC();
+  _qrqcMemFile.delete(id); qrqcDB.del(id).catch(()=>{});
+  const db=qrqcCloud();
+  if(db){
+    const up={}; up[LS.qrqc+'/'+(_qrqcKey.get(id)||id)]=null; up[QRQC_FILES+'/'+id]=null;
+    db.ref('cockpit').update(up).catch(err=>toast('Suppression QRQC non synchronisée ('+qrqcErr(err)+')',true));
+  }
+  auditLog(AUDIT_LABELS[LS.qrqc],'suppression · '+(it.title||''));
   toast('Fiche QRQC supprimée');
 }
-function qrqcView(id){
+async function qrqcView(id){
   const it=QRQC.find(x=>x.id===id); if(!it) return;
+  const missing=()=>toast(qrqcCloud()?'Fichier introuvable pour cette fiche':'Fichier non disponible hors ligne — reconnecte-toi au cloud',true);
   if(it.kind==='pdf'){
-    // PDF : ouverture dans un nouvel onglet via un blob (plus fiable qu'un dataURL)
+    // fenêtre ouverte tout de suite (dans le clic) : sinon le bloqueur de pop-up l'empêche après le téléchargement
+    const w=window.open('','_blank');
+    try{ if(w){ w.document.title=it.title||'QRQC'; w.document.body.textContent='Chargement du PDF…'; } }catch(e){}
+    let f=null; try{ f=await qrqcFile(id); }catch(e){}
+    if(!f){ try{ if(w) w.close(); }catch(e){} missing(); return; }
+    // PDF : ouverture via un blob (plus fiable qu'un dataURL)
     try{
-      const b64=String(it.img||'').split(',')[1]||''; const bin=atob(b64); const arr=new Uint8Array(bin.length);
+      const b64=String(f).split(',')[1]||''; const bin=atob(b64); const arr=new Uint8Array(bin.length);
       for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
       const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
-      window.open(url,'_blank'); setTimeout(()=>URL.revokeObjectURL(url),60000);
-    }catch(e){ try{ window.open(it.img,'_blank'); }catch(_){} }
+      if(w) w.location.href=url; else window.open(url,'_blank');
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){ try{ if(w) w.location.href=f; else window.open(f,'_blank'); }catch(_){} }
     return;
   }
   const lb=document.getElementById('qrqcLb'), im=document.getElementById('qrqcLbImg'), cap=document.getElementById('qrqcLbCap');
-  if(im) im.src=it.img||''; if(cap) cap.textContent=(it.title||'')+' · '+(it.d||''); if(lb) lb.classList.add('show');
+  const capTxt=(it.title||'')+' · '+(it.d||'');
+  if(im){ if(it.th) im.src=it.th; else im.removeAttribute('src'); }
+  if(cap) cap.textContent=capTxt+' · chargement…'; if(lb) lb.classList.add('show');
+  let f=null; try{ f=await qrqcFile(id); }catch(e){}
+  if(!f){ if(cap) cap.textContent=capTxt; missing(); return; }
+  if(im) im.src=f; if(cap) cap.textContent=capTxt;
 }
 function renderQRQC(){
   const g=document.getElementById('qrqcGrid'); if(!g) return;
@@ -3113,19 +3219,88 @@ function renderQRQC(){
   const list=[...QRQC].sort((a,b)=>(b.ts||0)-(a.ts||0));
   if(cnt) cnt.textContent=list.length?(list.length+' fiche'+(list.length>1?'s':'')):'';
   if(empty) empty.style.display=list.length?'none':'block';
+  const docIc=lbl=>`<div class="qrqc-thumb qrqc-pdf"><svg class="ic-svg" width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/></svg><span>${lbl}</span></div>`;
   g.innerHTML=list.map(it=>{
-    const thumb = it.kind==='pdf'
-      ? `<div class="qrqc-thumb qrqc-pdf"><svg class="ic-svg" width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8l4 4V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h4"/></svg><span>PDF</span></div>`
-      : `<img class="qrqc-thumb" src="${it.img||''}" alt="${esc(it.title||'QRQC')}" loading="lazy">`;
+    const thumb = it.kind==='pdf' ? docIc('PDF')
+      : it.th ? `<img class="qrqc-thumb" src="${it.th}" alt="${esc(it.title||'QRQC')}" loading="lazy">` : docIc('IMAGE');
     return `
     <div class="qrqc-card" data-qv="${it.id}">
       ${thumb}
-      <div class="qrqc-meta"><div class="qrqc-t">${esc(it.title||'QRQC')}</div><div class="qrqc-d">${esc(it.d||'')}${it.kind==='pdf'?' · PDF':''}</div></div>
+      <div class="qrqc-meta"><div class="qrqc-t">${esc(it.title||'QRQC')}</div><div class="qrqc-d">${esc(it.d||'')}${it.kind==='pdf'?' · PDF':''}</div>${it.pending?'<div class="qrqc-pend" title="Pas encore confirmée par le cloud — renvoi automatique">synchro en attente</div>':''}</div>
       <button class="qrqc-del" data-qd="${it.id}" title="Supprimer" aria-label="Supprimer la fiche">${icon('trash',13)}</button>
     </div>`;
   }).join('');
   g.querySelectorAll('[data-qv]').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('[data-qd]')) return; qrqcView(el.dataset.qv); }));
   g.querySelectorAll('[data-qd]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); qrqcDelete(b.dataset.qd); }));
+}
+/* démarrage : cache IndexedDB + reprise de l'ancien stockage localStorage (puis libération du quota) */
+const _qrqcBoot = (async ()=>{
+  let metas=[];
+  try{ metas=(await qrqcDB.all())||[]; }catch(e){}
+  const legacy=lsGet(LS.qrqc,null);
+  if(Array.isArray(legacy) && legacy.length){
+    const have=new Set(metas.map(m=>m.id)); let ok=true;
+    for(const v of legacy){
+      if(!v || !v.id || have.has(String(v.id))) continue;
+      const m=qrqcMeta(v);
+      if(v.img){
+        m.pending=1; _qrqcRecovered.add(m.id);             // absente du cloud ? elle y sera renvoyée (récupération)
+        if(m.kind!=='pdf' && !m.th){ try{ m.th=await qrqcThumb(v.img); }catch(e){} }
+      }
+      try{ await qrqcDB.put(m,v.img||null); }catch(e){ ok=false; if(v.img) _qrqcMemFile.set(m.id,v.img); }
+      metas.push(m); have.add(m.id);
+    }
+    if(ok){ try{ localStorage.removeItem(LS.qrqc); }catch(e){} }   // libère le quota (réclamations, 8D…)
+  }
+  QRQC=metas;
+  renderQRQC();
+})();
+/* ancien format cloud (tableau, fichier intégré à chaque fiche) → une fiche légère par id + fichier à part.
+   Écriture multi-chemins atomique qui ne touche que ces fiches (rien d'ajouté entre-temps par un autre
+   poste n'est écrasé). Une seule tentative par session : pas de boucle si le serveur refuse. */
+async function qrqcMigrate(legacy){
+  const db=qrqcCloud(); if(!db) return;
+  const up={};
+  for(const [k,v] of legacy){
+    const m=qrqcMeta(v);
+    if(v.img){
+      up[QRQC_FILES+'/'+m.id]=v.img;
+      if(m.kind!=='pdf' && !m.th){ try{ m.th=await qrqcThumb(v.img); }catch(e){} }
+    }
+    if(k!==m.id) up[LS.qrqc+'/'+k]=null;
+    up[LS.qrqc+'/'+m.id]=m;
+  }
+  try{ await db.ref('cockpit').update(up); }catch(e){ console.warn('QRQC · migration', e); }
+}
+/* appelée à chaque changement de cockpit/lwsq_qrqc_v1 : le cloud fait autorité, sauf pour les
+   fiches locales jamais confirmées (pending) qui y sont renvoyées au lieu d'être effacées */
+let _qrqcChain = Promise.resolve();
+function qrqcOnCloud(val){ _qrqcChain=_qrqcChain.then(()=>qrqcMerge(val)).catch(e=>console.warn('QRQC · synchro', e)); }
+async function qrqcMerge(val){
+  await _qrqcBoot;
+  const entries=(val && typeof val==='object') ? Object.keys(val).map(k=>[k,val[k]]).filter(e=>e[1] && typeof e[1]==='object' && e[1].id) : [];
+  const legacy=entries.filter(([k,v])=>k!==String(v.id) || v.img);
+  if(legacy.length && !_qrqcMigrated){ _qrqcMigrated=true; qrqcMigrate(legacy); }
+  const local=new Map(QRQC.map(x=>[x.id,x])), seen=new Set(), next=[], changed=[], toPush=[];
+  _qrqcKey.clear();
+  entries.forEach(([k,v])=>{
+    const m=qrqcMeta(v), l=local.get(m.id);
+    if(seen.has(m.id)) return;
+    seen.add(m.id); _qrqcKey.set(m.id,k);
+    if(v.img){ qrqcDB.putFile(m.id,v.img).catch(()=>{}); if(m.kind!=='pdf' && !m.th) m.th=v.img; }   // ancien format, avant migration
+    if(l && l.pending && _qrqcInflight.has(m.id)) m.pending=1;   // présente seulement en local tant que le serveur n'a pas confirmé
+    next.push(m);
+    if(!l || JSON.stringify(l)!==JSON.stringify(m)) changed.push(m);
+  });
+  local.forEach((l,id)=>{
+    if(seen.has(id)) return;
+    if(l.pending){ next.push(l); if(!_qrqcFailed.has(id)) toPush.push(id); }   // jamais arrivée au cloud → renvoi
+    else qrqcDB.del(id).catch(()=>{});                                         // supprimée depuis un autre poste
+  });
+  QRQC=next;
+  if(changed.length) qrqcDB.putMany(changed).catch(()=>{});
+  toPush.forEach(id=>qrqcPush(id));
+  renderQRQC();
 }
 (function(){
   const ov=document.getElementById('qrqcOverlay'), op=document.getElementById('openQrqc');
@@ -3754,7 +3929,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     measurementId: "G-PFYPG23JY2"
   };
   // Clés répliquées vers le cloud (le thème reste propre à chaque poste)
-  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms, LS.audit, LS.d8archive, LS.qrqc];
+  const FB_KEYS = [LS.claims, LS.sups, LS.ops, LS.nat, LS.fam, LS.tools, LS.cat, LS.prod, LS.ppmtgt, LS.scraptgt, LS.prodm, LS.prodcao, LS.machtype, LS.edits, LS.roleperms, LS.audit, LS.d8archive];
   window._FB_SYNCKEYS = new Set(FB_KEYS);
 
   const $f = id => document.getElementById(id);
@@ -3789,11 +3964,6 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     }
     if(key===LS.d8archive){
       try{ renderD8Trend(); renderD8Arch(); }catch(e){}
-      return;
-    }
-    if(key===LS.qrqc){
-      QRQC = toArr(val);
-      try{ renderQRQC(); }catch(e){}
       return;
     }
     switch(key){
@@ -3849,6 +4019,8 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
         });
       }catch(e){}
     });
+    // Archive QRQC : synchro fiche par fiche, hors localStorage (voir qrqcMerge)
+    try{ db.ref('cockpit/'+LS.qrqc).on('value', snap=>qrqcOnCloud(snap.val())); }catch(e){}
     // Signal de purge totale : si un poste clique sur « Tout supprimer », tous les postes
     // actuellement ouverts se RECHARGENT (récupèrent le code à jour + le cloud vidé) → aucune
     // réinjection possible. On ne réagit qu'aux purges survenues APRÈS le chargement de ce poste.
@@ -4163,7 +4335,7 @@ document.getElementById('rolePermsBody')?.addEventListener('change',e=>{
     'Données synchronisées en temps réel · LEONI Wiring Systems':'Real-time synced data · LEONI Wiring Systems',
     'Mentions légales':'Legal notice','Confidentialité':'Privacy','Support technique':'Technical support',
     // QRQC
-    'Archive QRQC':'QRQC archive','Aucune fiche QRQC pour l\'instant.':'No QRQC sheet yet.',
+    'Archive QRQC':'QRQC archive','Aucune fiche QRQC pour l\'instant.':'No QRQC sheet yet.','synchro en attente':'sync pending',
     // Archive 8D
     'Archive 8D':'8D archive','Archive':'Archive',"Voir l'archive":'View archive','Rechercher un 8D…':'Search an 8D…','Ouvrir':'Open','Résumé D4 uniquement':'D4 summary only',
     'Ouverture':'Opened','Clôture':'Closed','Archivé le':'Archived on','8D sans numéro':'Unnumbered 8D','Problème non renseigné':'Problem not specified',
